@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 142 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 142 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 142 20% 10%;
+
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 142 40% 96%;
+    --secondary-foreground: 142 20% 15%;
+
+    --muted: 142 30% 96%;
+    --muted-foreground: 142 10% 40%;
+
+    --accent: 142 50% 95%;
+    --accent-foreground: 142 71% 30%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 25 95% 53%;
+    --warning-foreground: 25 95% 20%;
+
+    --border: 142 20% 90%;
+    --input: 142 20% 90%;
+    --ring: 142 71% 45%;
+
+    --radius: 10px;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 142 20% 15%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 142 50% 95%;
+    --sidebar-accent-foreground: 142 20% 15%;
+    --sidebar-border: 142 20% 90%;
+    --sidebar-ring: 142 71% 45%;
+
+    /* Sentinel-specific tokens */
+    --surface-shadow: 0 0 0 1px hsla(142, 20%, 80%, 0.4), 0 1px 3px hsla(142, 20%, 50%, 0.08);
+    --surface-shadow-hover: 0 0 0 1px hsla(142, 20%, 70%, 0.5), 0 4px 12px hsla(142, 30%, 50%, 0.12);
+    --emerald-50: 142 77% 96%;
+    --emerald-100: 142 70% 92%;
+    --emerald-200: 142 64% 83%;
+    --emerald-300: 142 60% 68%;
+    --emerald-400: 142 69% 52%;
+    --emerald-500: 142 71% 45%;
+    --emerald-600: 142 76% 36%;
+    --emerald-700: 142 72% 29%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .font-mono-data {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+
+  .text-label {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .surface-card {
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+    box-shadow: var(--surface-shadow);
+  }
+
+  .surface-card-hover {
+    transition: box-shadow 150ms cubic-bezier(0.2, 0, 0, 1), transform 150ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .surface-card-hover:hover {
+    box-shadow: var(--surface-shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
