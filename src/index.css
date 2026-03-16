@@ -40,13 +40,17 @@
     --radius: 10px;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 142 20% 15%;
+    --sidebar-foreground: 142 40% 12%;
     --sidebar-primary: 142 71% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 142 50% 95%;
-    --sidebar-accent-foreground: 142 20% 15%;
-    --sidebar-border: 142 20% 90%;
+    --sidebar-accent: 142 77% 97%;
+    --sidebar-accent-foreground: 142 40% 12%;
+    --sidebar-border: 142 60% 82%;
     --sidebar-ring: 142 71% 45%;
+    --sidebar-active: 142 71% 45%;
+    --sidebar-active-foreground: 0 0% 100%;
+    --sidebar-muted: 142 15% 46%;
+    --sidebar-group-border: 142 70% 90%;
 
     /* Sentinel-specific tokens */
     --surface-shadow: 0 0 0 1px hsla(142, 20%, 80%, 0.4), 0 1px 3px hsla(142, 20%, 50%, 0.08);
