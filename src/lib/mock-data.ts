@@ -1,5 +1,51 @@
 // Mock data for the admin dashboard
 
+// Generate sparkline data (60 data points representing last 60 minutes)
+function generateSparkline(base: number, variance: number, trend: "up" | "down" | "flat" = "flat"): number[] {
+  return Array.from({ length: 60 }, (_, i) => {
+    const trendFactor = trend === "up" ? i * 0.1 : trend === "down" ? -i * 0.05 : 0;
+    return Math.max(0, Math.round(base + trendFactor + (Math.random() - 0.5) * variance));
+  });
+}
+
+export const mockSparklines = {
+  login_failures: generateSparkline(12, 8, "up"),
+  login_successes: generateSparkline(95, 20, "flat"),
+  active_sessions: generateSparkline(8, 3, "flat"),
+  open_alerts: generateSparkline(6, 4, "up"),
+  refresh_failures: generateSparkline(4, 3, "flat"),
+  suspicious_logins: generateSparkline(2, 2, "down"),
+};
+
+export const mockTrends = {
+  login_failures: { value: 18, direction: "up" as const },
+  active_sessions: { value: 5, direction: "down" as const },
+  open_alerts: { value: 12, direction: "up" as const },
+  mtta_mttr: { value: 8, direction: "down" as const },
+  login_successes: { value: 3, direction: "up" as const },
+  refresh_failures: { value: 22, direction: "up" as const },
+  suspicious_logins: { value: 15, direction: "down" as const },
+};
+
+export const mockMetricTooltips = {
+  login_failures: "Number of unsuccessful authentication attempts via web and API in the last 60 minutes. Threshold for alert is >50/hr.",
+  active_sessions: "Currently active admin sessions across all devices and locations.",
+  open_alerts: "Unresolved security alerts requiring investigation or acknowledgment.",
+  critical_high: "Count of critical and high severity alerts. Critical alerts require immediate action.",
+  login_successes: "Successful authentication events in the last 60 minutes across all admin accounts.",
+  refresh_failures: "Token rotation failures. High counts often indicate expired sessions or potential session hijacking attempts.",
+  suspicious_logins: "Flagged logins based on geographic anomalies, known VPN exit nodes, or impossible travel speed.",
+  mtta_mttr: "Mean Time to Acknowledge (seconds) vs Mean Time to Resolve (minutes). Benchmarked against your team's 30-day average.",
+};
+
+export const mockThreatSources = [
+  { ip: "192.168.1.100", country: "NG", label: "Lagos, Nigeria", hits: 18, severity: "critical" as const },
+  { ip: "10.0.0.42", country: "RU", label: "Moscow, Russia", hits: 12, severity: "high" as const },
+  { ip: "172.16.0.88", country: "CN", label: "Shanghai, China", hits: 9, severity: "high" as const },
+  { ip: "203.0.113.5", country: "BR", label: "São Paulo, Brazil", hits: 6, severity: "warning" as const },
+  { ip: "198.51.100.7", country: "IR", label: "Tehran, Iran", hits: 4, severity: "warning" as const },
+];
+
 export const mockOverview = {
   login_failures_last_hour: 12,
   login_success_last_hour: 95,
@@ -20,6 +66,23 @@ export const mockHeatmap = {
   })),
 };
 
+// Multi-variant heatmap data
+export const mockHeatmapLatency = {
+  items: Array.from({ length: 168 }, (_, i) => ({
+    day_of_week: Math.floor(i / 24),
+    hour_of_day: i % 24,
+    value: Math.floor(Math.random() * 500 + 50),
+  })),
+};
+
+export const mockHeatmapTraffic = {
+  items: Array.from({ length: 168 }, (_, i) => ({
+    day_of_week: Math.floor(i / 24),
+    hour_of_day: i % 24,
+    value: Math.floor(Math.random() * 200 + 10),
+  })),
+};
+
 export const mockAlerts: Array<{
   _id: string;
   rule_key: string;
@@ -29,6 +92,8 @@ export const mockAlerts: Array<{
   summary: string;
   details: Record<string, unknown>;
   actor_id: string;
+  source_ip?: string;
+  affected_user?: string;
   status: "open" | "acknowledged" | "resolved";
   is_read: boolean;
   ack_owner_id: string | null;
@@ -45,6 +110,8 @@ export const mockAlerts: Array<{
     summary: "Detected 18 failed login attempts from 192.168.1.100 in the last 15 minutes.",
     details: { ip: "192.168.1.100", attempts: 18 },
     actor_id: "unknown",
+    source_ip: "192.168.1.100",
+    affected_user: "admin_003",
     status: "open",
     is_read: false,
     ack_owner_id: null,
@@ -61,6 +128,8 @@ export const mockAlerts: Array<{
     summary: "Admin admin_003 succeeded login after 7 consecutive failures within 10 minutes.",
     details: { admin_id: "admin_003", prior_failures: 7 },
     actor_id: "admin_003",
+    source_ip: "10.0.0.42",
+    affected_user: "admin_003",
     status: "open",
     is_read: false,
     ack_owner_id: null,
@@ -77,6 +146,8 @@ export const mockAlerts: Array<{
     summary: "Admin admin_005 logged in from Lagos, Nigeria and then London, UK within 12 minutes.",
     details: { admin_id: "admin_005", locations: ["Lagos, Nigeria", "London, UK"], gap_minutes: 12 },
     actor_id: "admin_005",
+    source_ip: "172.16.0.88",
+    affected_user: "admin_005",
     status: "open",
     is_read: true,
     ack_owner_id: null,
@@ -93,6 +164,8 @@ export const mockAlerts: Array<{
     summary: "Admin admin_001 authenticated from a previously unseen device fingerprint.",
     details: { admin_id: "admin_001", fingerprint: "fp_abc123def" },
     actor_id: "admin_001",
+    source_ip: "10.0.0.5",
+    affected_user: "admin_001",
     status: "acknowledged",
     is_read: true,
     ack_owner_id: "admin_002",
@@ -109,6 +182,7 @@ export const mockAlerts: Array<{
     summary: "14 new admin sessions created in the last 5 minutes, exceeding the threshold of 10.",
     details: { count: 14, threshold: 10, window_minutes: 5 },
     actor_id: "system",
+    source_ip: "—",
     status: "open",
     is_read: false,
     ack_owner_id: null,
@@ -125,6 +199,8 @@ export const mockAlerts: Array<{
     summary: "Refresh token for admin_007 was used from two different IPs within 30 seconds.",
     details: { admin_id: "admin_007", ips: ["10.0.0.1", "10.0.0.2"] },
     actor_id: "admin_007",
+    source_ip: "10.0.0.1",
+    affected_user: "admin_007",
     status: "open",
     is_read: true,
     ack_owner_id: null,

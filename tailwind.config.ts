@@ -35,6 +35,14 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        anomaly: {
+          DEFAULT: "hsl(var(--anomaly))",
+          foreground: "hsl(var(--anomaly-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -71,19 +79,6 @@ export default {
           600: "hsl(var(--emerald-600))",
           700: "hsl(var(--emerald-700))",
         },
-        zinc: {
-          50: "hsl(var(--zinc-50))",
-          100: "hsl(var(--zinc-100))",
-          200: "hsl(var(--zinc-200))",
-          300: "hsl(var(--zinc-300))",
-          400: "hsl(var(--zinc-400))",
-          500: "hsl(var(--zinc-500))",
-          600: "hsl(var(--zinc-600))",
-          700: "hsl(var(--zinc-700))",
-          800: "hsl(var(--zinc-800))",
-          900: "hsl(var(--zinc-900))",
-          950: "hsl(var(--zinc-950))",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -103,11 +98,16 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.4" },
         },
+        "border-pulse": {
+          "0%, 100%": { borderColor: "hsl(var(--anomaly) / 0.3)" },
+          "50%": { borderColor: "hsl(var(--anomaly) / 0.8)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-dot": "pulse-dot 2s ease-in-out infinite",
+        "border-pulse": "border-pulse 2s ease-in-out infinite",
       },
     },
   },
