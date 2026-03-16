@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, Eye } from "lucide-react";
+import { Check, Eye, Search, Globe } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface Alert {
   _id: string;
@@ -15,6 +16,8 @@ interface Alert {
   ack_owner_id: string | null;
   last_fired_at: number;
   date_created: number;
+  source_ip?: string;
+  affected_user?: string;
 }
 
 function timeAgo(epoch: number): string {
@@ -32,6 +35,13 @@ const severityMap: Record<string, "critical" | "high" | "warning" | "info"> = {
   info: "info",
 };
 
+const severityBorderColor: Record<string, string> = {
+  critical: "border-l-destructive",
+  high: "border-l-warning",
+  warning: "border-l-anomaly",
+  info: "border-l-info",
+};
+
 export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
   const [acked, setAcked] = useState(!!alert.ack_owner_id);
   const [read, setRead] = useState(alert.is_read);
@@ -42,7 +52,10 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
       animate={{ opacity: read ? 0.6 : 1, y: 0 }}
       transition={{ duration: 0.25, delay: index * 0.04, ease: [0.2, 0, 0, 1] }}
       whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      className="surface-card surface-card-hover p-4"
+      className={cn(
+        "surface-card surface-card-hover p-4 border-l-[3px] group",
+        severityBorderColor[alert.severity] || "border-l-border"
+      )}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="font-mono-data text-muted-foreground uppercase tracking-widest">
@@ -56,11 +69,28 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
         {alert.title}
       </h3>
       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{alert.summary}</p>
+
+      {/* Inline context: source IP + affected user */}
+      {(alert.source_ip || alert.affected_user) && (
+        <div className="mt-1.5 flex items-center gap-3 font-mono-data text-muted-foreground">
+          {alert.source_ip && (
+            <span className="flex items-center gap-1">
+              <Globe className="h-3 w-3" />
+              {alert.source_ip}
+            </span>
+          )}
+          {alert.affected_user && (
+            <span>User: {alert.affected_user}</span>
+          )}
+        </div>
+      )}
+
       <div className="mt-1 font-mono-data text-muted-foreground">
         Fired {timeAgo(alert.last_fired_at)}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* Quick actions — visible on hover */}
+      <div className="mt-3 flex flex-wrap gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
         <motion.div whileTap={{ scale: 0.97 }}>
           <Button
             size="sm"
@@ -72,9 +102,15 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
           </Button>
         </motion.div>
         <motion.div whileTap={{ scale: 0.97 }}>
+          <Button size="sm" variant="outline" onClick={() => {}}>
+            <Search className="h-3.5 w-3.5" />
+            Investigate
+          </Button>
+        </motion.div>
+        <motion.div whileTap={{ scale: 0.97 }}>
           <Button size="sm" variant="ghost" onClick={() => setRead(!read)}>
             <Eye className="h-3.5 w-3.5" />
-            {read ? "Unread" : "Mark Read"}
+            {read ? "Unread" : "Dismiss"}
           </Button>
         </motion.div>
       </div>
