@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Plus, Trash2, Zap, CopyCheck } from "lucide-react";
+import { Plus, Trash2, Zap, CopyCheck, ScanSearch } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +30,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { fetchPermissionCatalog, fetchRoleTemplate, rolloutRoleTemplate, updateRoleTemplate } from "@/lib/api/admin-api";
-import type { Permission } from "@/lib/api/types";
+import {
+  fetchPermissionCatalog,
+  fetchRoleTemplate,
+  getRoleRolloutImpact,
+  previewRoleTemplate,
+  rolloutRoleTemplate,
+  updateRoleTemplate,
+} from "@/lib/api/admin-api";
+import type { Permission, RoleTemplatePreviewResult, RoleTemplateRolloutImpact } from "@/lib/api/types";
 
 function diffPermissions(current: Permission[], initial: Permission[]) {
   const currentSet = new Set(current.map((item) => item.key));
@@ -103,12 +110,10 @@ function AddFromCatalogDialog({
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Add Permission - {role}</DialogTitle>
-          <DialogDescription>
-            Choose API endpoints from the live catalog. Existing permissions are disabled.
-          </DialogDescription>
+          <DialogDescription>Choose API endpoints from live catalog.</DialogDescription>
         </DialogHeader>
 
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search method, path, key, description" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search method, path, key, summary" />
 
         <ScrollArea className="h-[460px] pr-2">
           <div className="space-y-2 py-1">
@@ -158,6 +163,55 @@ function AddFromCatalogDialog({
   );
 }
 
+function PreviewDialog({
+  role,
+  open,
+  onOpenChange,
+  preview,
+  impact,
+  loading,
+}: {
+  role: "cleaner" | "customer";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  preview: RoleTemplatePreviewResult | null;
+  impact: RoleTemplateRolloutImpact | null;
+  loading: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{role} Template Preview</DialogTitle>
+          <DialogDescription>Preview output + rollout impact from backend UX endpoints.</DialogDescription>
+        </DialogHeader>
+
+        {loading && <p className="text-sm text-muted-foreground">Loading preview...</p>}
+        {!loading && (
+          <div className="space-y-3 text-sm">
+            <div className="rounded-md border border-border p-3">
+              <p>Additions: <span className="font-mono-data">{preview?.additions ?? 0}</span></p>
+              <p>Removals: <span className="font-mono-data">{preview?.removals ?? 0}</span></p>
+              <p>Warnings: <span className="font-mono-data">{preview?.warnings?.length ?? 0}</span></p>
+            </div>
+            <div className="rounded-md border border-border p-3">
+              <p>Matched users: <span className="font-mono-data">{impact?.matched_users ?? 0}</span></p>
+              <p>Modified users: <span className="font-mono-data">{impact?.modified_users ?? 0}</span></p>
+            </div>
+            {!!preview?.changed_keys?.length && (
+              <p className="text-muted-foreground">Changed keys: {preview.changed_keys.slice(0, 8).join(", ")}{preview.changed_keys.length > 8 ? "..." : ""}</p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TemplateSection({
   role,
   source,
@@ -166,9 +220,13 @@ function TemplateSection({
   onUpdate,
   onRollout,
   onSave,
+  onPreview,
   warnings,
   saving,
   rollingOut,
+  previewing,
+  preview,
+  impact,
 }: {
   role: "cleaner" | "customer";
   source: string;
@@ -177,11 +235,16 @@ function TemplateSection({
   onUpdate: (perms: Permission[]) => void;
   onRollout: () => void;
   onSave: () => void;
+  onPreview: () => void;
   warnings: string[];
   saving: boolean;
   rollingOut: boolean;
+  previewing: boolean;
+  preview: RoleTemplatePreviewResult | null;
+  impact: RoleTemplateRolloutImpact | null;
 }) {
   const [rolloutPhrase, setRolloutPhrase] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const isProduction = process.env.NODE_ENV === "production";
   const confirmationPhrase = `ROLLOUT ${role.toUpperCase()}`;
 
@@ -203,6 +266,7 @@ function TemplateSection({
           <Badge variant={source === "template" ? "info" : "secondary"}>{source || "default"}</Badge>
           <Badge variant="secondary" className="font-mono-data text-[10px]">{permissions.length} permissions</Badge>
           <Badge variant="outline">+{added.length} / -{removed.length} changes</Badge>
+          {impact && <Badge variant="outline">Impact: {impact.matched_users ?? 0} matched</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
           <AddFromCatalogDialog role={role} currentPermissions={permissions} onSelect={addPermission} />
@@ -234,6 +298,18 @@ function TemplateSection({
             <CopyCheck className="h-3.5 w-3.5 mr-1.5" />
             Apply Baseline
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              onPreview();
+              setPreviewOpen(true);
+            }}
+            disabled={previewing}
+          >
+            <ScanSearch className="h-3.5 w-3.5 mr-1.5" />
+            {previewing ? "Previewing..." : "Preview"}
+          </Button>
           <Button size="sm" variant="default" className="gap-1.5" onClick={onSave} disabled={saving || warnings.length > 0}>
             {saving ? "Saving..." : "Save"}
           </Button>
@@ -248,33 +324,18 @@ function TemplateSection({
               <AlertDialogHeader>
                 <AlertDialogTitle>Permission Rollout - {role}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Dry-run preview: <span className="font-mono-data">{added.length} additions</span> and <span className="font-mono-data">{removed.length} removals</span> versus last loaded template.
+                  Preview: <span className="font-mono-data">{added.length} additions</span>, <span className="font-mono-data">{removed.length} removals</span>. Impact: <span className="font-mono-data">{impact?.matched_users ?? 0} matched</span>, <span className="font-mono-data">{impact?.modified_users ?? 0} modified</span>.
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <div className="space-y-2 text-sm">
-                {added.length > 0 && (
-                  <p className="text-muted-foreground">
-                    Added keys: <span className="font-mono-data">{added.slice(0, 3).map((item) => item.key).join(", ")}{added.length > 3 ? "..." : ""}</span>
-                  </p>
-                )}
-                {removed.length > 0 && (
-                  <p className="text-muted-foreground">
-                    Removed keys: <span className="font-mono-data">{removed.slice(0, 3).map((item) => item.key).join(", ")}{removed.length > 3 ? "..." : ""}</span>
-                  </p>
-                )}
-                {isProduction && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`rollout-${role}`}>Type {confirmationPhrase}</Label>
-                    <Input id={`rollout-${role}`} value={rolloutPhrase} onChange={(e) => setRolloutPhrase(e.target.value)} />
-                  </div>
-                )}
-              </div>
+              {isProduction && (
+                <div className="space-y-1.5">
+                  <Label htmlFor={`rollout-${role}`}>Type {confirmationPhrase}</Label>
+                  <Input id={`rollout-${role}`} value={rolloutPhrase} onChange={(e) => setRolloutPhrase(e.target.value)} />
+                </div>
+              )}
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={onRollout}
-                  disabled={isProduction ? rolloutPhrase !== confirmationPhrase : false}
-                >
+                <AlertDialogAction onClick={onRollout} disabled={isProduction ? rolloutPhrase !== confirmationPhrase : false}>
                   Confirm Rollout
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -308,12 +369,9 @@ function TemplateSection({
             <div className="min-w-0">
               <span className="text-label text-foreground">{perm.name}</span>
               <p className="font-mono-data text-muted-foreground truncate">{perm.key}</p>
-              {!!perm.description && <p className="text-xs text-muted-foreground">{perm.description}</p>}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="secondary" className="font-mono-data text-[10px]">
-                {perm.methods.join(", ")}
-              </Badge>
+              <Badge variant="secondary" className="font-mono-data text-[10px]">{perm.methods.join(", ")}</Badge>
               <Button
                 size="sm"
                 variant="ghost"
@@ -326,6 +384,8 @@ function TemplateSection({
           </motion.div>
         ))}
       </div>
+
+      <PreviewDialog role={role} open={previewOpen} onOpenChange={setPreviewOpen} preview={preview} impact={impact} loading={previewing} />
     </motion.div>
   );
 }
@@ -337,17 +397,15 @@ export default function RoleTemplatesPage() {
   const customerQuery = useQuery({ queryKey: ["role-template", "customer"], queryFn: () => fetchRoleTemplate("customer") });
   const catalogQuery = useQuery({ queryKey: ["permissions", "catalog"], queryFn: fetchPermissionCatalog });
 
+  const cleanerImpactQuery = useQuery({ queryKey: ["role-rollout-impact", "cleaner"], queryFn: () => getRoleRolloutImpact("cleaner") });
+  const customerImpactQuery = useQuery({ queryKey: ["role-rollout-impact", "customer"], queryFn: () => getRoleRolloutImpact("customer") });
+
   const [cleanerPerms, setCleanerPerms] = useState<Permission[]>([]);
   const [customerPerms, setCustomerPerms] = useState<Permission[]>([]);
   const [initialCleanerPerms, setInitialCleanerPerms] = useState<Permission[]>([]);
   const [initialCustomerPerms, setInitialCustomerPerms] = useState<Permission[]>([]);
-  const [receipt, setReceipt] = useState<{
-    role: "cleaner" | "customer";
-    matchedUsers: number;
-    modifiedUsers: number;
-    timestamp: string;
-    actor: string;
-  } | null>(null);
+  const [cleanerPreview, setCleanerPreview] = useState<RoleTemplatePreviewResult | null>(null);
+  const [customerPreview, setCustomerPreview] = useState<RoleTemplatePreviewResult | null>(null);
 
   useEffect(() => {
     if (cleanerQuery.data?.permissionList?.permissions) {
@@ -376,29 +434,28 @@ export default function RoleTemplatesPage() {
       updateRoleTemplate(role, { permissions }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["role-template", variables.role] });
+      queryClient.invalidateQueries({ queryKey: ["role-rollout-impact", variables.role] });
       toast.success(`${variables.role} template saved.`);
     },
     onError: () => toast.error("Failed to save template."),
   });
 
+  const previewMutation = useMutation({
+    mutationFn: ({ role, permissions }: { role: "cleaner" | "customer"; permissions: Permission[] }) =>
+      previewRoleTemplate(role, { permissions }),
+    onSuccess: (result, variables) => {
+      if (variables.role === "cleaner") setCleanerPreview(result);
+      else setCustomerPreview(result);
+    },
+    onError: () => toast.error("Failed to preview template."),
+  });
+
   const rolloutMutation = useMutation({
     mutationFn: (role: "cleaner" | "customer") => rolloutRoleTemplate(role),
-    onSuccess: (response, role) => {
+    onSuccess: (_, role) => {
       queryClient.invalidateQueries({ queryKey: ["role-template", role] });
       queryClient.invalidateQueries({ queryKey: ["permissions", "catalog"] });
       queryClient.invalidateQueries({ queryKey: ["role-rollout-impact", role] });
-      queryClient.refetchQueries({ queryKey: ["role-template", role] });
-      queryClient.refetchQueries({ queryKey: ["permissions", "catalog"] });
-
-      const result = (response as { data?: { matched_users?: number; modified_users?: number; actor_id?: string } })?.data;
-      setReceipt({
-        role,
-        matchedUsers: result?.matched_users ?? 0,
-        modifiedUsers: result?.modified_users ?? 0,
-        timestamp: new Date().toISOString(),
-        actor: result?.actor_id || "current_admin",
-      });
-
       toast.success(`${role} permission rollout completed.`);
     },
     onError: () => toast.error("Rollout failed."),
@@ -428,10 +485,14 @@ export default function RoleTemplatesPage() {
             initialPermissions={initialCleanerPerms}
             onUpdate={setCleanerPerms}
             onSave={() => saveMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
+            onPreview={() => previewMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
             onRollout={() => rolloutMutation.mutate("cleaner")}
             warnings={cleanerWarnings}
             saving={saveMutation.isPending}
+            previewing={previewMutation.isPending}
             rollingOut={rolloutMutation.isPending}
+            preview={cleanerPreview}
+            impact={cleanerImpactQuery.data || null}
           />
           <TemplateSection
             role="customer"
@@ -440,34 +501,17 @@ export default function RoleTemplatesPage() {
             initialPermissions={initialCustomerPerms}
             onUpdate={setCustomerPerms}
             onSave={() => saveMutation.mutate({ role: "customer", permissions: customerPerms })}
+            onPreview={() => previewMutation.mutate({ role: "customer", permissions: customerPerms })}
             onRollout={() => rolloutMutation.mutate("customer")}
             warnings={customerWarnings}
             saving={saveMutation.isPending}
+            previewing={previewMutation.isPending}
             rollingOut={rolloutMutation.isPending}
+            preview={customerPreview}
+            impact={customerImpactQuery.data || null}
           />
         </>
       )}
-
-      <Dialog open={!!receipt} onOpenChange={(open) => !open && setReceipt(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rollout Receipt</DialogTitle>
-            <DialogDescription>Post-rollout summary and cache refresh confirmation.</DialogDescription>
-          </DialogHeader>
-          {receipt && (
-            <div className="space-y-2 text-sm">
-              <p>Role: <span className="font-mono-data">{receipt.role}</span></p>
-              <p>Matched users: <span className="font-mono-data">{receipt.matchedUsers}</span></p>
-              <p>Modified users: <span className="font-mono-data">{receipt.modifiedUsers}</span></p>
-              <p>Timestamp: <span className="font-mono-data">{new Date(receipt.timestamp).toLocaleString()}</span></p>
-              <p>Actor: <span className="font-mono-data">{receipt.actor}</span></p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setReceipt(null)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

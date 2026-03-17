@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, AlertTriangle, Clock, CheckCircle, XCircle } from "lucide-react";
-import { type CleanerOnboarding, type OnboardingStatus } from "@/lib/mock-onboarding-data";
+import { type CleanerOnboarding, type OnboardingStatus } from "@/lib/onboarding";
 
 interface OnboardingQueueProps {
   cleaners: CleanerOnboarding[];
@@ -20,7 +20,7 @@ interface OnboardingQueueProps {
     total_pending: number;
     total_approved_today: number;
     total_rejected_today: number;
-    avg_review_time_minutes: number;
+    avg_review_time_minutes: number | null;
   };
   onSelect: (cleaner: CleanerOnboarding) => void;
 }
@@ -70,7 +70,12 @@ export function OnboardingQueue({ cleaners, stats, onSelect }: OnboardingQueuePr
           { label: "Pending", value: stats.total_pending, icon: Clock, color: "text-muted-foreground" },
           { label: "Approved Today", value: stats.total_approved_today, icon: CheckCircle, color: "text-primary" },
           { label: "Rejected Today", value: stats.total_rejected_today, icon: XCircle, color: "text-destructive" },
-          { label: "Avg Review", value: `${stats.avg_review_time_minutes}m`, icon: Clock, color: "text-muted-foreground" },
+          {
+            label: "Avg Review",
+            value: stats.avg_review_time_minutes === null ? "N/A" : `${stats.avg_review_time_minutes}m`,
+            icon: Clock,
+            color: "text-muted-foreground",
+          },
         ].map((s) => (
           <div key={s.label} className="surface-card px-3 py-2.5">
             <div className="flex items-center gap-1.5">

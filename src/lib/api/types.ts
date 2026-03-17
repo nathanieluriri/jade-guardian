@@ -164,3 +164,150 @@ export interface CustomerListItem {
   date_created?: string;
   accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
 }
+
+export type AuditEventStatus = "success" | "failed" | "denied" | "warning" | "critical";
+export type AuditEventSeverity = "info" | "warning" | "high" | "critical";
+export type AuditSort = "asc" | "desc";
+export type AuditRedaction = "strict" | "standard" | "none";
+export type ExportJobStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface AuditActor {
+  id: string;
+  type?: string;
+  display_name?: string;
+  email?: string;
+}
+
+export interface AuditTarget {
+  id: string;
+  type?: string;
+  display_name?: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  timestamp: number;
+  request_id?: string;
+  actor?: AuditActor;
+  target?: AuditTarget;
+  event_type?: string;
+  action?: string;
+  summary?: string;
+  method?: string;
+  endpoint?: string;
+  status?: AuditEventStatus | string;
+  http_status_code?: number;
+  severity?: AuditEventSeverity;
+  ip_address?: string;
+  user_agent?: string;
+  permission?: Record<string, unknown>;
+  payload_redacted?: Record<string, unknown>;
+  changes?: Array<{ field?: string; before?: unknown; after?: unknown }>;
+  related?: Record<string, unknown>;
+  tags?: string[];
+  risk_score?: number;
+}
+
+export interface AuditPagination {
+  start?: number;
+  stop?: number;
+  count: number;
+  total?: number;
+  next_cursor?: string | null;
+  has_more: boolean;
+}
+
+export interface AuditHistoryResponse {
+  items: AuditEvent[];
+  pagination: AuditPagination;
+  query?: Record<string, unknown>;
+}
+
+export interface AuditHistoryFilters {
+  start?: number;
+  stop?: number;
+  cursor?: string | null;
+  sort?: AuditSort;
+  actor_id?: string;
+  actor_type?: string;
+  target_id?: string;
+  target_type?: string;
+  endpoint?: string;
+  method?: string;
+  status?: string;
+  event_type?: string;
+  severity?: string;
+  request_id?: string;
+  ip?: string;
+  from_epoch?: number;
+  to_epoch?: number;
+  tags?: string[];
+  include_payload?: boolean;
+  include_related?: boolean;
+}
+
+export interface AuditExportCreateRequest {
+  actor_id?: string | null;
+  actor_type?: string | null;
+  target_id?: string | null;
+  target_type?: string | null;
+  endpoint?: string | null;
+  method?: string | null;
+  status?: string | null;
+  event_type?: string | null;
+  severity?: string | null;
+  request_id?: string | null;
+  ip?: string | null;
+  from_epoch?: number | null;
+  to_epoch?: number | null;
+  tags?: string[] | null;
+  include_payload?: boolean;
+  include_related?: boolean;
+  format?: "csv";
+  limit?: number;
+}
+
+export interface AuditExportJob {
+  export_id: string;
+  status: ExportJobStatus;
+  estimated_rows?: number;
+  download_url?: string | null;
+  expires_at?: number | string;
+}
+
+export interface RoleTemplatePreviewResult {
+  role: "cleaner" | "customer";
+  additions?: number;
+  removals?: number;
+  changed_keys?: string[];
+  warnings?: string[];
+  [key: string]: unknown;
+}
+
+export interface RoleTemplateRolloutImpact {
+  role: "cleaner" | "customer";
+  matched_users?: number;
+  modified_users?: number;
+  [key: string]: unknown;
+}
+
+export interface UsersSummaryReport {
+  total_users?: number;
+  total_cleaners?: number;
+  total_customers?: number;
+  signups_24h?: number;
+  signups_7d?: number;
+  signups_30d?: number;
+  pending_onboarding?: number;
+  approval_rate?: number;
+  [key: string]: unknown;
+}
+
+export interface SignupTrendPoint {
+  label?: string;
+  period?: string;
+  cleaners?: number;
+  customers?: number;
+  total?: number;
+  [key: string]: unknown;
+}

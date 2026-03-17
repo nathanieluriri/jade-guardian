@@ -1,134 +1,161 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
+import { CheckCircle2, Circle, Dot, Loader2, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, Eye, Search, Globe } from "lucide-react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { MonitoringAlert } from "@/lib/api/types";
 
-interface Alert {
-  _id: string;
-  rule_key: string;
-  severity: "info" | "warning" | "high" | "critical";
-  title: string;
-  summary: string;
-  status: string;
-  is_read: boolean;
-  ack_owner_id: string | null;
-  last_fired_at: number;
-  date_created: number;
-  source_ip?: string;
-  affected_user?: string;
+function formatRelativeTime(epochSeconds: number) {
+  const delta = Math.round((epochSeconds * 1000 - Date.now()) / 1000);
+  const abs = Math.abs(delta);
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+  if (abs < 60) return rtf.format(Math.round(delta), "second");
+  if (abs < 3600) return rtf.format(Math.round(delta / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(delta / 3600), "hour");
+  return rtf.format(Math.round(delta / 86400), "day");
 }
 
-function timeAgo(epoch: number): string {
-  const diff = Math.floor(Date.now() / 1000 - epoch);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+function severityBadgeVariant(severity: MonitoringAlert["severity"]) {
+  if (severity === "critical") return "critical";
+  if (severity === "high") return "high";
+  if (severity === "warning") return "warning";
+  return "info";
 }
-
-const severityMap: Record<string, "critical" | "high" | "warning" | "info"> = {
-  critical: "critical",
-  high: "high",
-  warning: "warning",
-  info: "info",
-};
-
-const severityBorderColor: Record<string, string> = {
-  critical: "border-l-destructive",
-  high: "border-l-warning",
-  warning: "border-l-anomaly",
-  info: "border-l-info",
-};
 
 interface AlertCardProps {
-  alert: Alert;
-  index: number;
-  onAcknowledge?: (alertId: string, nextAck: boolean) => void;
-  onReadToggle?: (alertId: string, nextRead: boolean) => void;
+  alert: MonitoringAlert;
+  index?: number;
+  selected?: boolean;
+  suppressRowActions?: boolean;
+  showSelectionControl?: boolean;
+  readActionPending?: boolean;
+  ackActionPending?: boolean;
+  onSelectToggle?: (alertId: string, selected: boolean) => void;
+  onAcknowledge?: (alertId: string, ack: boolean) => void;
+  onReadToggle?: (alertId: string, isRead: boolean) => void;
   onInvestigate?: (alertId: string) => void;
 }
 
-export function AlertCard({ alert, index, onAcknowledge, onReadToggle, onInvestigate }: AlertCardProps) {
-  const router = useRouter();
-  const [acked, setAcked] = useState(!!alert.ack_owner_id);
-  const [read, setRead] = useState(alert.is_read);
-
-  const handleAcknowledge = () => {
-    const next = !acked;
-    setAcked(next);
-    onAcknowledge?.(alert._id, next);
-  };
-
-  const handleReadToggle = () => {
-    const next = !read;
-    setRead(next);
-    onReadToggle?.(alert._id, next);
-  };
-
-  const handleInvestigate = () => {
-    onInvestigate?.(alert._id);
-    router.push(
-      `/admin/security/audit?preset=suspicious-login&endpoint=${encodeURIComponent("/v1/admins/monitoring/alerts")}&target=${encodeURIComponent(alert._id)}`
-    );
-  };
+export const AlertCard = memo(function AlertCard({
+  alert,
+  index = 0,
+  selected = false,
+  suppressRowActions = false,
+  showSelectionControl = false,
+  readActionPending = false,
+  ackActionPending = false,
+  onSelectToggle,
+  onAcknowledge,
+  onReadToggle,
+  onInvestigate,
+}: AlertCardProps) {
+  const isUnread = !alert.is_read;
+  const isAcked = !!alert.ack_owner_id;
+  const hasRowActions = !!onAcknowledge || !!onReadToggle || !!onInvestigate;
+  const relativeLastFired = formatRelativeTime(alert.last_fired_at);
+  const exactLastFired = new Date(alert.last_fired_at * 1000).toISOString();
 
   return (
-    <motion.div
+    <motion.article
       initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: read ? 0.6 : 1, y: 0 }}
-      transition={{ duration: 0.25, delay: index * 0.04, ease: [0.2, 0, 0, 1] }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      className={cn(
-        "surface-card surface-card-hover p-4 border-l-[3px] group",
-        severityBorderColor[alert.severity] || "border-l-border"
-      )}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.03, 0.2), duration: 0.2 }}
+      className={[
+        "rounded-xl border p-4 sm:p-5 transition-colors",
+        selected ? "border-primary bg-primary/10" : "border-border",
+        isUnread ? "bg-sky-50/70" : "bg-card",
+      ].join(" ")}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-mono-data text-muted-foreground uppercase tracking-widest">{alert.rule_key}</span>
-        <Badge variant={severityMap[alert.severity] || "secondary"}>{alert.severity}</Badge>
-      </div>
-      <h3 className="text-[15px] font-semibold text-foreground leading-tight text-balance">{alert.title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{alert.summary}</p>
+      <div className="flex items-start gap-3">
+        {showSelectionControl && (
+          <div className="pt-1">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(checked) => onSelectToggle?.(alert._id, !!checked)}
+              aria-label={`Select alert ${alert.title}`}
+            />
+          </div>
+        )}
 
-      {(alert.source_ip || alert.affected_user) && (
-        <div className="mt-1.5 flex items-center gap-3 font-mono-data text-muted-foreground">
-          {alert.source_ip && (
-            <span className="flex items-center gap-1">
-              <Globe className="h-3 w-3" />
-              {alert.source_ip}
-            </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2">
+                {isUnread ? <Dot className="h-5 w-5 text-sky-600" /> : <Circle className="h-3.5 w-3.5 text-muted-foreground" />}
+                <h3 className={["truncate text-sm sm:text-base", isUnread ? "font-semibold" : "font-medium"].join(" ")}>
+                  {alert.title}
+                </h3>
+              </div>
+              <p className="line-clamp-2 text-xs text-muted-foreground sm:text-sm">{alert.summary}</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Badge variant={severityBadgeVariant(alert.severity)} className="uppercase tracking-[0.08em]">
+                {alert.severity}
+              </Badge>
+              <Badge variant="secondary">{isAcked ? "Acknowledged" : "Unacknowledged"}</Badge>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span className="font-mono-data">{alert.rule_key}</span>
+            <span title={exactLastFired}>Last fired {relativeLastFired}</span>
+            {alert.source_ip && <span>IP: {alert.source_ip}</span>}
+            {alert.affected_user && <span>User: {alert.affected_user}</span>}
+          </div>
+
+          {!suppressRowActions && hasRowActions && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onReadToggle?.(alert._id, isUnread)}
+                disabled={readActionPending}
+              >
+                {readActionPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  isUnread ? "Mark Read" : "Mark Unread"
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onAcknowledge?.(alert._id, !isAcked)}
+                disabled={ackActionPending}
+              >
+                {ackActionPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  isAcked ? "Unacknowledge" : "Acknowledge"
+                )}
+              </Button>
+              {onInvestigate && (
+                <Button size="sm" onClick={() => onInvestigate(alert._id)} className="gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Investigate
+                </Button>
+              )}
+              {isAcked && (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  Ack owner set
+                </span>
+              )}
+            </div>
           )}
-          {alert.affected_user && <span>User: {alert.affected_user}</span>}
         </div>
-      )}
-
-      <div className="mt-1 font-mono-data text-muted-foreground">Fired {timeAgo(alert.last_fired_at)}</div>
-
-      <div className="mt-3 flex flex-wrap gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" variant={acked ? "default" : "outline"} onClick={handleAcknowledge}>
-            <Check className="h-3.5 w-3.5" />
-            {acked ? "Acknowledged" : "Acknowledge"}
-          </Button>
-        </motion.div>
-        <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" variant="outline" onClick={handleInvestigate}>
-            <Search className="h-3.5 w-3.5" />
-            Investigate
-          </Button>
-        </motion.div>
-        <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" variant="ghost" onClick={handleReadToggle}>
-            <Eye className="h-3.5 w-3.5" />
-            {read ? "Unread" : "Dismiss"}
-          </Button>
-        </motion.div>
       </div>
-    </motion.div>
+    </motion.article>
   );
-}
+});

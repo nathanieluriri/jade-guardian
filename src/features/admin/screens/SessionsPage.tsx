@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CircleAlert } from "lucide-react";
+import { toast } from "sonner";
 import { MetricCard } from "@/components/MetricCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +17,7 @@ import {
   revokeOtherSessions,
   fetchSessionAnomalies,
 } from "@/lib/api/admin-api";
+import { clearAuthState } from "@/lib/api/auth-storage";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,24 +41,37 @@ const fadeUp = {
 };
 
 export default function SessionsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmText, setConfirmText] = useState("");
   const sessionsQuery = useQuery({ queryKey: ["session-anomalies"], queryFn: fetchSessionAnomalies });
 
   const revokeCurrentMutation = useMutation({
     mutationFn: revokeCurrentSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session-anomalies"] }),
+    onSuccess: () => {
+      toast.success("Current session revoked. Logging out...");
+      clearAuthState();
+      queryClient.clear();
+      router.replace("/admin/login");
+    },
+    onError: () => toast.error("Failed to revoke current session."),
   });
   const revokeOthersMutation = useMutation({
     mutationFn: revokeOtherSessions,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session-anomalies"] }),
+    onSuccess: () => {
+      toast.success("Other sessions revoked.");
+      queryClient.invalidateQueries({ queryKey: ["session-anomalies"] });
+    },
+    onError: () => toast.error("Failed to revoke other sessions."),
   });
   const revokeAllMutation = useMutation({
     mutationFn: revokeAllSessions,
     onSuccess: () => {
       setConfirmText("");
+      toast.success("All sessions revoked.");
       queryClient.invalidateQueries({ queryKey: ["session-anomalies"] });
     },
+    onError: () => toast.error("Failed to revoke all sessions."),
   });
 
   const sortedEntries = useMemo(() => {

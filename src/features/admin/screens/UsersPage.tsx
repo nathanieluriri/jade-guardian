@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Download, TrendingUp, Users, UserRoundCheck, ShieldAlert } from "lucide-react";
-import { listCleaners, listCustomers } from "@/lib/api/admin-api";
+import { fetchUsersSignupTrend, fetchUsersSummaryReport, listCleaners, listCustomers } from "@/lib/api/admin-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,19 +14,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 function resolveId(input: { id?: string; _id?: string }) {
   return input.id || input._id || "unknown";
-}
-
-function toDateEpoch(date?: string): number {
-  if (!date) return 0;
-  const parsed = Date.parse(date);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function withinDays(date?: string, days = 7): boolean {
-  const ts = toDateEpoch(date);
-  if (!ts) return false;
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return ts >= cutoff;
 }
 
 function toCsv(rows: Array<Record<string, string | number | boolean | null | undefined>>): string {
@@ -71,8 +58,20 @@ export default function UsersPage() {
     queryFn: () => listCustomers(start, stop),
   });
 
+  const summaryQuery = useQuery({
+    queryKey: ["admin-users", "reports", "summary"],
+    queryFn: fetchUsersSummaryReport,
+  });
+
+  const trendQuery = useQuery({
+    queryKey: ["admin-users", "reports", "signups-trend"],
+    queryFn: fetchUsersSignupTrend,
+  });
+
   const cleaners = useMemo(() => cleanersQuery.data || [], [cleanersQuery.data]);
   const customers = useMemo(() => customersQuery.data || [], [customersQuery.data]);
+  const summary = summaryQuery.data || {};
+  const trend = useMemo(() => (Array.isArray(trendQuery.data) ? trendQuery.data : []), [trendQuery.data]);
 
   const cleanedSearch = search.trim().toLowerCase();
 
@@ -94,13 +93,13 @@ export default function UsersPage() {
     });
   }, [cleanedSearch, customers]);
 
-  const totalUsers = cleaners.length + customers.length;
-  const signups24h = [...cleaners, ...customers].filter((user) => withinDays(user.date_created, 1)).length;
-  const signups7d = [...cleaners, ...customers].filter((user) => withinDays(user.date_created, 7)).length;
-  const signups30d = [...cleaners, ...customers].filter((user) => withinDays(user.date_created, 30)).length;
-  const pendingOnboarding = cleaners.filter((cleaner) => cleaner.onboarding_status === "PENDING").length;
-  const approved = cleaners.filter((cleaner) => cleaner.onboarding_status === "APPROVED").length;
-  const approvalRate = cleaners.length > 0 ? Math.round((approved / cleaners.length) * 100) : 0;
+  const trendSummary = useMemo(() => {
+    if (trend.length === 0) return "No trend data available.";
+    const latest = trend[trend.length - 1];
+    const earliest = trend[0];
+    if (!latest || !earliest) return "No trend data available.";
+    return `Trend window ${earliest.label || earliest.period || "start"} to ${latest.label || latest.period || "latest"}: total ${latest.total ?? "-"}.`;
+  }, [trend]);
 
   return (
     <div className="space-y-6 max-w-[1250px]">
@@ -108,7 +107,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tighter">Users</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Growth snapshots, onboarding funnel visibility, and drill-down tables for cleaners and customers.
+            KPI and trend cards use reporting APIs. Tables use admin directory endpoints.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -119,11 +118,11 @@ export default function UsersPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[
-          { label: "Total Users", value: totalUsers, icon: Users },
-          { label: "Signups 24h", value: signups24h, icon: TrendingUp },
-          { label: "Signups 7d", value: signups7d, icon: TrendingUp },
-          { label: "Pending Onboarding", value: pendingOnboarding, icon: ShieldAlert },
-          { label: "Approval Rate", value: `${approvalRate}%`, icon: UserRoundCheck },
+          { label: "Total Users", value: summary.total_users ?? summary.total_customers ?? 0, icon: Users },
+          { label: "Signups 24h", value: summary.signups_24h ?? 0, icon: TrendingUp },
+          { label: "Signups 7d", value: summary.signups_7d ?? 0, icon: TrendingUp },
+          { label: "Pending Onboarding", value: summary.pending_onboarding ?? 0, icon: ShieldAlert },
+          { label: "Approval Rate", value: `${summary.approval_rate ?? 0}%`, icon: UserRoundCheck },
         ].map((card) => (
           <motion.div key={card.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="surface-card p-4">
             <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide">
@@ -188,6 +187,8 @@ export default function UsersPage() {
         <Link href="/admin/security/audit?preset=permission-denials" className="text-primary underline-offset-4 hover:underline">
           View permission denials
         </Link>
+        {summaryQuery.isLoading && <Badge variant="secondary">Loading summary...</Badge>}
+        {trendQuery.isLoading && <Badge variant="secondary">Loading trend...</Badge>}
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -199,23 +200,23 @@ export default function UsersPage() {
 
         <TabsContent value="overview" className="space-y-3">
           <div className="surface-card p-4">
-            <h2 className="text-base font-semibold">Signup Funnel Snapshot</h2>
+            <h2 className="text-base font-semibold">Reporting Snapshot</h2>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-md border border-border p-3">
                 <p className="text-xs text-muted-foreground">Total Cleaners</p>
-                <p className="text-lg font-semibold">{cleaners.length}</p>
+                <p className="text-lg font-semibold">{summary.total_cleaners ?? cleaners.length}</p>
               </div>
               <div className="rounded-md border border-border p-3">
                 <p className="text-xs text-muted-foreground">Pending Cleaner Onboarding</p>
-                <p className="text-lg font-semibold">{pendingOnboarding}</p>
-              </div>
-              <div className="rounded-md border border-border p-3">
-                <p className="text-xs text-muted-foreground">Approved Cleaners</p>
-                <p className="text-lg font-semibold">{approved}</p>
+                <p className="text-lg font-semibold">{summary.pending_onboarding ?? 0}</p>
               </div>
               <div className="rounded-md border border-border p-3">
                 <p className="text-xs text-muted-foreground">Total Customers</p>
-                <p className="text-lg font-semibold">{customers.length}</p>
+                <p className="text-lg font-semibold">{summary.total_customers ?? customers.length}</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs text-muted-foreground">Signups 30d</p>
+                <p className="text-lg font-semibold">{summary.signups_30d ?? 0}</p>
               </div>
             </div>
           </div>
@@ -312,9 +313,7 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="text-xs text-muted-foreground">
-        Trend summary: {signups24h} signups in last 24h, {signups7d} in last 7d, {signups30d} in last 30d.
-      </div>
+      <div className="text-xs text-muted-foreground">{trendSummary}</div>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import type { CleanerListItem } from "@/lib/api/types";
+
 export type OnboardingStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type ExperienceLevel = "beginner" | "intermediate" | "experienced" | "expert";
 
@@ -57,6 +59,7 @@ interface ApiCleanerProfile {
   services?: string[];
   government_id_image_url?: string | null;
   payout_information?: {
+    method?: string;
     account_holder_name?: string;
     routing_number?: string;
     sort_code?: string;
@@ -65,17 +68,20 @@ interface ApiCleanerProfile {
   } | null;
 }
 
-interface ApiCleanerInput {
-  id: string;
-  email: string;
-  date_created?: string;
-  firstName?: string;
-  lastName?: string;
-  full_name?: string;
-  onboarding_status?: OnboardingStatus;
-  rejection_reason?: string | null;
-  profile?: ApiCleanerProfile;
+export interface OnboardingStats {
+  total_pending: number;
+  total_approved_today: number;
+  total_rejected_today: number;
+  total_reviewed_today: number;
+  avg_review_time_minutes: number | null;
 }
+
+type ApiCleanerInput = Omit<CleanerListItem, "profile" | "onboarding_status"> & {
+  id?: string;
+  _id?: string;
+  onboarding_status?: OnboardingStatus;
+  profile?: ApiCleanerProfile;
+};
 
 export const SERVICE_LABELS: Record<string, string> = {
   STANDARD: "Standard Cleaning",
@@ -115,9 +121,14 @@ function normalizeExperienceLevel(level?: string): ExperienceLevel {
   return "beginner";
 }
 
+function resolveCleanerId(cleaner: ApiCleanerInput): string {
+  return cleaner.id || cleaner._id || "";
+}
+
 export function mapCleanerToOnboarding(cleaner: ApiCleanerInput): CleanerOnboarding {
+  const resolvedId = resolveCleanerId(cleaner);
   const fullName = cleaner.full_name || `${cleaner.firstName || ""} ${cleaner.lastName || ""}`.trim();
-  const [firstName, ...rest] = fullName ? fullName.split(" ") : ["Cleaner", cleaner.id.slice(-4)];
+  const [firstName, ...rest] = fullName ? fullName.split(" ") : ["Cleaner", resolvedId.slice(-4) || "N/A"];
   const lastName = rest.join(" ") || cleaner.lastName || "";
 
   const profile = cleaner.profile;
@@ -125,10 +136,10 @@ export function mapCleanerToOnboarding(cleaner: ApiCleanerInput): CleanerOnboard
   const payout = profile?.payout_information;
 
   return {
-    id: cleaner.id,
+    id: resolvedId,
     firstName: cleaner.firstName || firstName || "Cleaner",
     lastName: cleaner.lastName || lastName || "",
-    email: cleaner.email,
+    email: cleaner.email || "",
     date_created: cleaner.date_created || new Date().toISOString(),
     onboarding_status: cleaner.onboarding_status || "PENDING",
     rejection_reason: cleaner.rejection_reason || null,
@@ -140,16 +151,16 @@ export function mapCleanerToOnboarding(cleaner: ApiCleanerInput): CleanerOnboard
             service_radius_miles: location?.service_radius_miles || 10,
           },
           weekly_availability: {
-            days: Array.isArray(profile?.weekly_availability?.days)
+            days: Array.isArray(profile.weekly_availability?.days)
               ? profile.weekly_availability.days.map((d: string) => normalizeWeekday(String(d)))
               : [],
           },
-          experience_level: normalizeExperienceLevel(profile?.experience_level),
-          services: profile?.services || [],
-          government_id_image_url: profile?.government_id_image_url || null,
+          experience_level: normalizeExperienceLevel(profile.experience_level),
+          services: profile.services || [],
+          government_id_image_url: profile.government_id_image_url || null,
           payout_information: payout
             ? {
-                method: "bank_transfer",
+                method: payout.method || "bank_transfer",
                 account_holder_name: payout.account_holder_name || "N/A",
                 routing_number: payout.routing_number || payout.sort_code || payout.bank_name || "N/A",
                 account_last_four: (payout.account_number || "0000").slice(-4),
@@ -166,13 +177,16 @@ export function mapCleanerToOnboarding(cleaner: ApiCleanerInput): CleanerOnboard
   };
 }
 
-export function computeOnboardingStats(cleaners: CleanerOnboarding[]) {
+export function computeOnboardingStats(cleaners: CleanerOnboarding[]): OnboardingStats {
   const today = new Date().toISOString().slice(0, 10);
+  const reviewedToday = cleaners.filter((c) => c.onboarding_status !== "PENDING" && c.date_created.slice(0, 10) === today);
+
   return {
     total_pending: cleaners.filter((c) => c.onboarding_status === "PENDING").length,
     total_approved_today: cleaners.filter((c) => c.onboarding_status === "APPROVED" && c.date_created.slice(0, 10) === today).length,
     total_rejected_today: cleaners.filter((c) => c.onboarding_status === "REJECTED" && c.date_created.slice(0, 10) === today).length,
-    total_reviewed_today: cleaners.filter((c) => c.onboarding_status !== "PENDING" && c.date_created.slice(0, 10) === today).length,
-    avg_review_time_minutes: 5,
+    total_reviewed_today: reviewedToday.length,
+    avg_review_time_minutes: null,
   };
 }
+

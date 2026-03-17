@@ -3,6 +3,12 @@ import type {
   AdminProfile,
   AdminLoginResponse,
   AlertSlaMetrics,
+  AuditEvent,
+  AuditExportCreateRequest,
+  AuditExportJob,
+  AuditHistoryFilters,
+  AuditHistoryResponse,
+  AuditRedaction,
   AuthHeatmapCell,
   CleanerListItem,
   CustomerListItem,
@@ -12,8 +18,12 @@ import type {
   MonitoringOverview,
   PermissionCatalogResponse,
   RoleTemplate,
+  RoleTemplatePreviewResult,
+  RoleTemplateRolloutImpact,
   SessionRevokeResponse,
   SessionAnomalies,
+  SignupTrendPoint,
+  UsersSummaryReport,
 } from "@/lib/api/types";
 
 export async function loginAdmin(email: string, password: string) {
@@ -120,22 +130,86 @@ export async function updateRoleTemplate(role: "cleaner" | "customer", permissio
   });
 }
 
+export async function previewRoleTemplate(role: "cleaner" | "customer", permissions: RoleTemplate["permissionList"]) {
+  const response = await apiRequest<RoleTemplatePreviewResult>(`/v1/admins/permission-templates/${role}/preview`, {
+    method: "POST",
+    body: JSON.stringify({ permissionList: permissions }),
+  });
+  return response.data;
+}
+
+export async function getRoleRolloutImpact(role: "cleaner" | "customer") {
+  const response = await apiRequest<RoleTemplateRolloutImpact>(`/v1/admins/permission-templates/${role}/rollout-impact`);
+  return response.data;
+}
+
 export async function rolloutRoleTemplate(role: "cleaner" | "customer") {
   return apiRequest(`/v1/admins/permission-templates/${role}/rollout`, { method: "POST" });
+}
+
+export async function createAuditExportJob(payload: AuditExportCreateRequest) {
+  const response = await apiRequest<AuditExportJob>("/v1/admins/monitoring/audit/export", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function getAuditExportJob(exportId: string) {
+  const response = await apiRequest<AuditExportJob>(`/v1/admins/monitoring/audit/export/${exportId}`);
+  return response.data;
+}
+
+export function getAuditExportDownloadUrl(exportId: string) {
+  return `/v1/admins/monitoring/audit/export/${exportId}/download`;
 }
 
 export async function exportAuditLog(payload: {
   actor_id?: string | null;
   target_id?: string | null;
   endpoint?: string | null;
-  start_epoch?: number | null;
-  end_epoch?: number | null;
+  from_epoch?: number | null;
+  to_epoch?: number | null;
   limit?: number;
 }) {
-  return apiRequest("/v1/admins/monitoring/audit/export", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return createAuditExportJob(payload);
+}
+
+export async function listAuditHistory(filters: AuditHistoryFilters = {}) {
+  const search = new URLSearchParams();
+  const entries = Object.entries(filters) as Array<[keyof AuditHistoryFilters, AuditHistoryFilters[keyof AuditHistoryFilters]]>;
+
+  for (const [key, value] of entries) {
+    if (value === undefined || value === null || value === "") continue;
+    if (key === "tags" && Array.isArray(value)) {
+      if (value.length > 0) search.set("tags", value.join(","));
+      continue;
+    }
+    search.set(String(key), String(value));
+  }
+
+  if (!search.has("sort")) search.set("sort", "desc");
+  if (!search.has("cursor")) {
+    if (!search.has("start")) search.set("start", "0");
+    if (!search.has("stop")) search.set("stop", "20");
+  }
+
+  const response = await apiRequest<AuditHistoryResponse>(`/v1/admins/monitoring/audit/history?${search.toString()}`);
+  return response.data;
+}
+
+export async function getAuditEventById(
+  eventId: string,
+  options: { include_payload?: boolean; include_related?: boolean; redaction?: AuditRedaction } = {}
+) {
+  const search = new URLSearchParams();
+  if (options.include_payload !== undefined) search.set("include_payload", String(options.include_payload));
+  if (options.include_related !== undefined) search.set("include_related", String(options.include_related));
+  if (options.redaction) search.set("redaction", options.redaction);
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+
+  const response = await apiRequest<AuditEvent>(`/v1/admins/monitoring/audit/history/${eventId}${suffix}`);
+  return response.data;
 }
 
 export async function listAdmins(start = 0, stop = 100) {
@@ -194,4 +268,17 @@ export async function listCustomers(start = 0, stop = 100) {
 export async function fetchCustomerById(customerId: string) {
   const response = await apiRequest<CustomerListItem>(`/v1/admins/customers/${customerId}`);
   return response.data;
+}
+
+export async function fetchUsersSummaryReport() {
+  const response = await apiRequest<UsersSummaryReport>("/v1/admins/reports/users/summary");
+  return response.data;
+}
+
+export async function fetchUsersSignupTrend() {
+  const response = await apiRequest<SignupTrendPoint[] | { items?: SignupTrendPoint[] }>(
+    "/v1/admins/reports/users/signups-trend"
+  );
+  if (Array.isArray(response.data)) return response.data;
+  return response.data?.items || [];
 }

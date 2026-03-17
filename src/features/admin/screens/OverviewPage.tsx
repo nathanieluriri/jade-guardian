@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Globe, Shield } from "lucide-react";
@@ -8,6 +9,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { AuthHeatmap } from "@/components/AuthHeatmap";
 import { AlertCard } from "@/components/AlertCard";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   fetchAlertSla,
   fetchAlerts,
@@ -16,7 +18,7 @@ import {
   updateAlertAckState,
   updateAlertReadState,
 } from "@/lib/api/admin-api";
-import { generateSparkline, metricTooltips, trendFromValue } from "@/lib/admin-ui";
+import { metricTooltips } from "@/lib/admin-ui";
 
 const stagger = {
   hidden: {},
@@ -29,6 +31,10 @@ const fadeUp = {
 };
 
 export default function OverviewPage() {
+  const router = useRouter();
+  const [recentAlertFilter, setRecentAlertFilter] = useState<"all" | "unread" | "unacknowledged">("all");
+  const [pendingReadIds, setPendingReadIds] = useState<Set<string>>(new Set());
+  const [pendingAckIds, setPendingAckIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const overviewQuery = useQuery({ queryKey: ["overview"], queryFn: fetchMonitoringOverview });
   const heatmapQuery = useQuery({ queryKey: ["overview", "heatmap"], queryFn: () => fetchAuthHeatmap(14) });
@@ -63,9 +69,52 @@ export default function OverviewPage() {
     },
   });
 
+  const handleOverviewRowRead = async (alertId: string, isRead: boolean) => {
+    setPendingReadIds((prev) => {
+      const next = new Set(prev);
+      next.add(alertId);
+      return next;
+    });
+    try {
+      await markReadMutation.mutateAsync({ alertId, isRead });
+    } finally {
+      setPendingReadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  };
+
+  const handleOverviewRowAck = async (alertId: string, ack: boolean) => {
+    setPendingAckIds((prev) => {
+      const next = new Set(prev);
+      next.add(alertId);
+      return next;
+    });
+    try {
+      await ackMutation.mutateAsync({ alertId, ack });
+    } finally {
+      setPendingAckIds((prev) => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  };
+
   const ov = overviewQuery.data;
   const alertSla = slaQuery.data;
-  const recentAlerts = useMemo(() => alertsQuery.data || [], [alertsQuery.data]);
+  const recentAlerts = useMemo(() => {
+    const alerts = alertsQuery.data || [];
+    if (recentAlertFilter === "unread") {
+      return alerts.filter((alert) => !alert.is_read);
+    }
+    if (recentAlertFilter === "unacknowledged") {
+      return alerts.filter((alert) => !alert.ack_owner_id);
+    }
+    return alerts;
+  }, [alertsQuery.data, recentAlertFilter]);
 
   const threatSources = useMemo(() => {
     const grouped = new Map<string, { ip: string; hits: number; severity: "warning" | "high" | "critical"; label: string }>();
@@ -117,8 +166,6 @@ export default function OverviewPage() {
             value={ov.login_failures_last_hour}
             variant={ov.login_failures_last_hour > 10 ? "danger" : "success"}
             tooltip={metricTooltips.login_failures}
-            sparkline={generateSparkline(ov.login_failures_last_hour)}
-            trend={trendFromValue(ov.login_failures_last_hour)}
             anomaly={ov.login_failures_last_hour > 10}
           />
         </motion.div>
@@ -127,8 +174,6 @@ export default function OverviewPage() {
             label="Active Sessions"
             value={ov.active_admin_sessions}
             tooltip={metricTooltips.active_sessions}
-            sparkline={generateSparkline(ov.active_admin_sessions)}
-            trend={trendFromValue(ov.active_admin_sessions)}
           />
         </motion.div>
         <motion.div variants={fadeUp}>
@@ -137,8 +182,6 @@ export default function OverviewPage() {
             value={openAlertAttentionQuery.data?.length ?? 0}
             variant={(openAlertAttentionQuery.data?.length ?? 0) > 5 ? "danger" : "default"}
             tooltip={metricTooltips.open_alerts}
-            sparkline={generateSparkline(openAlertAttentionQuery.data?.length ?? 0)}
-            trend={trendFromValue(openAlertAttentionQuery.data?.length ?? 0)}
           />
         </motion.div>
         <motion.div variants={fadeUp}>
@@ -146,7 +189,6 @@ export default function OverviewPage() {
             label="MTTA / MTTR"
             value={alertSla ? `${Math.round(alertSla.mtta_seconds)}s / ${Math.round(alertSla.mttr_seconds / 60)}m` : "--"}
             tooltip={metricTooltips.mtta_mttr}
-            trend={trendFromValue(alertSla?.mtta_seconds || 0)}
           />
         </motion.div>
       </motion.div>
@@ -163,8 +205,6 @@ export default function OverviewPage() {
               value={ov.login_success_last_hour}
               variant="success"
               tooltip={metricTooltips.login_successes}
-              sparkline={generateSparkline(ov.login_success_last_hour)}
-              trend={trendFromValue(ov.login_success_last_hour)}
             />
           </motion.div>
           <motion.div variants={fadeUp}>
@@ -173,8 +213,6 @@ export default function OverviewPage() {
               value={ov.refresh_failures_last_hour}
               variant={ov.refresh_failures_last_hour > 5 ? "danger" : "default"}
               tooltip={metricTooltips.refresh_failures}
-              sparkline={generateSparkline(ov.refresh_failures_last_hour)}
-              trend={trendFromValue(ov.refresh_failures_last_hour)}
             />
           </motion.div>
           <motion.div variants={fadeUp}>
@@ -183,8 +221,6 @@ export default function OverviewPage() {
               value={ov.suspicious_login_successes_last_day}
               variant={ov.suspicious_login_successes_last_day > 0 ? "danger" : "default"}
               tooltip={metricTooltips.suspicious_logins}
-              sparkline={generateSparkline(ov.suspicious_login_successes_last_day)}
-              trend={trendFromValue(ov.suspicious_login_successes_last_day)}
             />
           </motion.div>
         </motion.div>
@@ -230,15 +266,34 @@ export default function OverviewPage() {
       </div>
 
       <div>
-        <h2 className="text-label text-muted-foreground mb-3">Recent Alerts</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-label text-muted-foreground">Recent Alerts</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {(["all", "unread", "unacknowledged"] as const).map((tab) => (
+              <Button
+                key={tab}
+                size="sm"
+                variant={recentAlertFilter === tab ? "default" : "outline"}
+                onClick={() => setRecentAlertFilter(tab)}
+                className="capitalize"
+              >
+                {tab}
+              </Button>
+            ))}
+          </div>
+        </div>
         <div className="grid gap-3">
+          {recentAlerts.length === 0 && <p className="text-sm text-muted-foreground">No alerts for this view.</p>}
           {recentAlerts.map((alert, i) => (
             <AlertCard
               key={alert._id}
               alert={alert}
               index={i}
-              onAcknowledge={(alertId, ack) => ackMutation.mutate({ alertId, ack })}
-              onReadToggle={(alertId, isRead) => markReadMutation.mutate({ alertId, isRead })}
+              readActionPending={pendingReadIds.has(alert._id)}
+              ackActionPending={pendingAckIds.has(alert._id)}
+              onAcknowledge={handleOverviewRowAck}
+              onReadToggle={handleOverviewRowRead}
+              onInvestigate={(alertId) => router.push(`/admin/security/audit?target_id=${encodeURIComponent(alertId)}`)}
             />
           ))}
         </div>

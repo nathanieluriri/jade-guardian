@@ -33,7 +33,7 @@ import {
   SERVICE_LABELS,
   EXPERIENCE_LABELS,
   DAY_LABELS,
-} from "@/lib/mock-onboarding-data";
+} from "@/lib/onboarding";
 
 interface OnboardingDetailProps {
   cleaner: CleanerOnboarding;

@@ -12,16 +12,3 @@ export const metricTooltips = {
   mtta_mttr:
     "Mean Time to Acknowledge (seconds) vs Mean Time to Resolve (minutes). Benchmarked against your team's 30-day average.",
 };
-
-export function generateSparkline(value: number, points = 24): number[] {
-  return Array.from({ length: points }, (_, i) => {
-    const wave = Math.sin((i / points) * Math.PI * 2);
-    const noise = (Math.random() - 0.5) * 0.2;
-    return Math.max(0, Math.round(value * (1 + wave * 0.1 + noise)));
-  });
-}
-
-export function trendFromValue(value: number): { value: number; direction: "up" | "down" } {
-  if (value <= 0) return { value: 0, direction: "down" };
-  return { value: Math.min(99, Math.round((value / (value + 10)) * 100)), direction: "up" };
-}

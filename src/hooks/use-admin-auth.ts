@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { clearAuthState, getAuthState, setAuthState } from "@/lib/api/auth-storage";
-import { fetchAdminProfile, loginAdmin } from "@/lib/api/admin-api";
+import { fetchAdminProfile, loginAdmin, revokeCurrentSession } from "@/lib/api/admin-api";
 
 export function useAdminProfile() {
   return useQuery({
@@ -36,7 +36,12 @@ export function useAdminLogout() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  return () => {
+  return async () => {
+    try {
+      await revokeCurrentSession();
+    } catch {
+      // Best effort logout: clear local auth state even if revoke endpoint fails.
+    }
     clearAuthState();
     queryClient.clear();
     router.replace("/admin/login");

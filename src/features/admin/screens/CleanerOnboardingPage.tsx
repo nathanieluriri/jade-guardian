@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { fetchCleanerById, listOnboardingQueue, reviewCleanerOnboarding } from "@/lib/api/admin-api";
 import { OnboardingQueue } from "@/components/OnboardingQueue";
 import { OnboardingDetail } from "@/components/OnboardingDetail";
-import { computeOnboardingStats, mapCleanerToOnboarding, type CleanerOnboarding } from "@/lib/mock-onboarding-data";
+import { computeOnboardingStats, mapCleanerToOnboarding, type CleanerOnboarding } from "@/lib/onboarding";
 
 function resolveCleanerId(input: { id?: string; _id?: string }): string {
   return input.id || input._id || "";
@@ -15,7 +15,6 @@ function resolveCleanerId(input: { id?: string; _id?: string }): string {
 
 export default function CleanerOnboardingPage() {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
   const [search, setSearch] = useState("");
   const [start, setStart] = useState(0);
   const [stop, setStop] = useState(20);
@@ -23,7 +22,7 @@ export default function CleanerOnboardingPage() {
   const [timeline, setTimeline] = useState<Array<{ cleanerId: string; decision: "APPROVED" | "REJECTED"; at: string }>>([]);
 
   const cleanersQuery = useQuery({
-    queryKey: ["admin-cleaners", { status, search, start, stop }],
+    queryKey: ["admin-cleaners", { search, start, stop }],
     queryFn: () => listOnboardingQueue(start, stop, "submitted_at"),
   });
 
@@ -38,7 +37,6 @@ export default function CleanerOnboardingPage() {
     });
 
     const filtered = items.filter((cleaner) => {
-      if (status !== "ALL" && cleaner.onboarding_status !== status) return false;
       const query = search.trim().toLowerCase();
       if (!query) return true;
       return (
@@ -50,7 +48,7 @@ export default function CleanerOnboardingPage() {
     });
 
     return filtered;
-  }, [cleanersQuery.data, search, status]);
+  }, [cleanersQuery.data, search]);
 
   useEffect(() => {
     if (!normalizedCleaners.length) {
@@ -144,20 +142,13 @@ export default function CleanerOnboardingPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tighter">Cleaner Onboarding</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Workflow shortcuts: <span className="font-mono-data">J/K</span> navigate queue, <span className="font-mono-data">A</span> approve.
+            Queue is pending-only by backend contract. Workflow shortcuts: <span className="font-mono-data">J/K</span> navigate queue, <span className="font-mono-data">A</span> approve.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as "PENDING" | "APPROVED" | "REJECTED" | "ALL")}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="PENDING">Pending</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="ALL">All</option>
-          </select>
+          <span className="h-9 inline-flex items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground">
+            Pending only
+          </span>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -182,6 +173,11 @@ export default function CleanerOnboardingPage() {
           {cleanersQuery.isError && <p className="font-mono-data text-destructive">Failed to load onboarding queue.</p>}
           {!cleanersQuery.isLoading && !cleanersQuery.isError && (
             <OnboardingQueue cleaners={normalizedCleaners} stats={stats} onSelect={(cleaner) => setSelectedCleanerId(cleaner.id)} />
+          )}
+          {!cleanersQuery.isLoading && !cleanersQuery.isError && normalizedCleaners.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No pending onboarding submissions found. Backend queue only returns records with <span className="font-mono-data">onboarding_status=PENDING</span>.
+            </p>
           )}
         </div>
 
