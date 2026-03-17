@@ -51,6 +51,7 @@ async function refreshAccessToken(): Promise<string | null> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.accessToken}`,
         },
         body: JSON.stringify({ refresh_token: auth.refreshToken }),
       });
@@ -95,7 +96,7 @@ export async function apiRequest<T>(
 
   if (auth) {
     const token = getAuthState()?.accessToken;
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Authorization", `Bearer ${token || ""}`);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {

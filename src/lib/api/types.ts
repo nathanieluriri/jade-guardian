@@ -18,6 +18,9 @@ export interface AdminProfile {
   id: string;
   full_name?: string;
   email?: string;
+  accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  email_verified?: boolean;
+  last_auth_at?: number | null;
   permissionList?: {
     permissions: Array<{ name: string; methods: string[]; path: string; key?: string; description?: string }>;
   };
@@ -149,4 +152,15 @@ export interface CleanerListItem {
   onboarding_status?: "PENDING" | "APPROVED" | "REJECTED";
   rejection_reason?: string | null;
   profile?: unknown;
+}
+
+export interface CustomerListItem {
+  id?: string;
+  _id?: string;
+  firstName?: string;
+  lastName?: string;
+  full_name?: string;
+  email: string;
+  date_created?: string;
+  accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
 }

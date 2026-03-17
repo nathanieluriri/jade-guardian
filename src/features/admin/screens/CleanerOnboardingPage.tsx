@@ -1,134 +1,223 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { useMutation } from "@tanstack/react-query";
-import { reviewCleanerOnboarding } from "@/lib/api/admin-api";
-import type { ApiError } from "@/lib/api/types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { fetchCleanerById, listOnboardingQueue, reviewCleanerOnboarding } from "@/lib/api/admin-api";
+import { OnboardingQueue } from "@/components/OnboardingQueue";
+import { OnboardingDetail } from "@/components/OnboardingDetail";
+import { computeOnboardingStats, mapCleanerToOnboarding, type CleanerOnboarding } from "@/lib/mock-onboarding-data";
 
-interface DecisionLog {
-  cleanerId: string;
-  status: "APPROVED" | "REJECTED";
-  timestamp: string;
+function resolveCleanerId(input: { id?: string; _id?: string }): string {
+  return input.id || input._id || "";
 }
 
 export default function CleanerOnboardingPage() {
-  const [cleanerId, setCleanerId] = useState("");
-  const [status, setStatus] = useState<"APPROVED" | "REJECTED">("APPROVED");
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [decisionLog, setDecisionLog] = useState<DecisionLog[]>([]);
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
+  const [search, setSearch] = useState("");
+  const [start, setStart] = useState(0);
+  const [stop, setStop] = useState(20);
+  const [selectedCleanerId, setSelectedCleanerId] = useState<string | null>(null);
+  const [timeline, setTimeline] = useState<Array<{ cleanerId: string; decision: "APPROVED" | "REJECTED"; at: string }>>([]);
 
-  const reviewMutation = useMutation({
-    mutationFn: ({ selectedStatus, reason }: { selectedStatus: "APPROVED" | "REJECTED"; reason?: string }) =>
-      reviewCleanerOnboarding(cleanerId.trim(), selectedStatus, reason),
-    onSuccess: (_, variables) => {
-      const normalizedCleanerId = cleanerId.trim();
-      setDecisionLog((prev) => [
-        {
-          cleanerId: normalizedCleanerId,
-          status: variables.selectedStatus,
-          timestamp: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
-      toast.success(`Cleaner ${normalizedCleanerId} ${variables.selectedStatus.toLowerCase()}.`);
-      if (variables.selectedStatus === "REJECTED") {
-        setRejectionReason("");
-      }
-    },
-    onError: (error) => {
-      const apiError = error as unknown as ApiError;
-      const requestIdLine = apiError.requestId ? ` Request ID: ${apiError.requestId}` : "";
-      toast.error(`${apiError.message || "Review request failed."}${requestIdLine}`);
+  const cleanersQuery = useQuery({
+    queryKey: ["admin-cleaners", { status, search, start, stop }],
+    queryFn: () => listOnboardingQueue(start, stop, "submitted_at"),
+  });
+
+  const normalizedCleaners = useMemo(() => {
+    const items = (cleanersQuery.data || []).map((cleaner) => {
+      const resolvedId = resolveCleanerId(cleaner);
+      return mapCleanerToOnboarding({
+        ...cleaner,
+        id: resolvedId,
+        profile: cleaner.profile as never,
+      });
+    });
+
+    const filtered = items.filter((cleaner) => {
+      if (status !== "ALL" && cleaner.onboarding_status !== status) return false;
+      const query = search.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        cleaner.id.toLowerCase().includes(query) ||
+        cleaner.firstName.toLowerCase().includes(query) ||
+        cleaner.lastName.toLowerCase().includes(query) ||
+        cleaner.email.toLowerCase().includes(query)
+      );
+    });
+
+    return filtered;
+  }, [cleanersQuery.data, search, status]);
+
+  useEffect(() => {
+    if (!normalizedCleaners.length) {
+      setSelectedCleanerId(null);
+      return;
+    }
+
+    if (!selectedCleanerId || !normalizedCleaners.some((item) => item.id === selectedCleanerId)) {
+      setSelectedCleanerId(normalizedCleaners[0].id);
+    }
+  }, [normalizedCleaners, selectedCleanerId]);
+
+  const selectedCleaner = useMemo<CleanerOnboarding | null>(() => {
+    if (!selectedCleanerId) return null;
+    return normalizedCleaners.find((item) => item.id === selectedCleanerId) || null;
+  }, [normalizedCleaners, selectedCleanerId]);
+
+  const cleanerDetailQuery = useQuery({
+    queryKey: ["admin-cleaner-detail", selectedCleanerId],
+    enabled: !!selectedCleanerId,
+    queryFn: async () => {
+      if (!selectedCleanerId) return null;
+      const cleaner = await fetchCleanerById(selectedCleanerId);
+      const resolvedId = resolveCleanerId(cleaner);
+      return mapCleanerToOnboarding({ ...cleaner, id: resolvedId, profile: cleaner.profile as never });
     },
   });
 
-  const canSubmit =
-    !!cleanerId.trim() && (status === "APPROVED" || (status === "REJECTED" && rejectionReason.trim().length > 0));
+  const reviewMutation = useMutation({
+    mutationFn: ({ cleanerId, nextStatus, reason }: { cleanerId: string; nextStatus: "APPROVED" | "REJECTED"; reason?: string }) =>
+      reviewCleanerOnboarding(cleanerId, nextStatus, reason),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-cleaners"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-cleaner-detail", variables.cleanerId] });
+      setTimeline((prev) => [{ cleanerId: variables.cleanerId, decision: variables.nextStatus, at: new Date().toISOString() }, ...prev]);
+
+      const nextPending = normalizedCleaners.find((item) => item.id !== variables.cleanerId && item.onboarding_status === "PENDING");
+      if (nextPending) {
+        setSelectedCleanerId(nextPending.id);
+      }
+
+      toast.success(`Cleaner ${variables.cleanerId} ${variables.nextStatus.toLowerCase()} successfully.`);
+    },
+    onError: () => {
+      toast.error("Failed to submit onboarding decision.");
+    },
+  });
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
+      if (isTyping) return;
+      if (!selectedCleaner) return;
+
+      if (event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        const index = normalizedCleaners.findIndex((item) => item.id === selectedCleaner.id);
+        const next = normalizedCleaners[Math.min(index + 1, normalizedCleaners.length - 1)];
+        if (next) setSelectedCleanerId(next.id);
+      }
+
+      if (event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        const index = normalizedCleaners.findIndex((item) => item.id === selectedCleaner.id);
+        const prev = normalizedCleaners[Math.max(index - 1, 0)];
+        if (prev) setSelectedCleanerId(prev.id);
+      }
+
+      if (event.key.toLowerCase() === "a" && selectedCleaner.onboarding_status === "PENDING") {
+        event.preventDefault();
+        reviewMutation.mutate({ cleanerId: selectedCleaner.id, nextStatus: "APPROVED" });
+      }
+
+      if (event.key.toLowerCase() === "r" && selectedCleaner.onboarding_status === "PENDING") {
+        event.preventDefault();
+        toast.info("Use the reject dialog to pick a reason template before submitting.");
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [normalizedCleaners, reviewMutation, selectedCleaner]);
+
+  const stats = useMemo(() => computeOnboardingStats(normalizedCleaners), [normalizedCleaners]);
 
   return (
-    <div className="max-w-[1100px] space-y-5">
-      <motion.h1 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-semibold tracking-tighter mb-5">
-        Cleaner Onboarding
-      </motion.h1>
+    <div className="space-y-5 max-w-[1300px]">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tighter">Cleaner Onboarding</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Workflow shortcuts: <span className="font-mono-data">J/K</span> navigate queue, <span className="font-mono-data">A</span> approve.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as "PENDING" | "APPROVED" | "REJECTED" | "ALL")}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="ALL">All</option>
+          </select>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search cleaner"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          />
+          <button
+            onClick={() => {
+              const nextStart = start + stop;
+              setStart(nextStart);
+            }}
+            className="h-9 rounded-md border border-input px-3 text-sm"
+          >
+            Next page
+          </button>
+        </div>
+      </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="surface-card p-5 space-y-4">
-        <p className="text-sm text-muted-foreground">
-          No dedicated admin onboarding-queue listing endpoint exists yet. Submit decisions using the backend cleaner document ID (`id` or fallback `_id`) from existing cleaner/booking payloads.
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="cleaner-id">Cleaner ID</Label>
-            <Input
-              id="cleaner-id"
-              value={cleanerId}
-              onChange={(event) => setCleanerId(event.target.value)}
-              placeholder="67f2d5804f0fce2a130fe832"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Decision</Label>
-            <div className="flex gap-2">
-              <Button type="button" variant={status === "APPROVED" ? "default" : "outline"} onClick={() => setStatus("APPROVED")}>
-                APPROVED
-              </Button>
-              <Button type="button" variant={status === "REJECTED" ? "default" : "outline"} onClick={() => setStatus("REJECTED")}>
-                REJECTED
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="rejection-reason">Rejection Reason (required when rejected)</Label>
-            <Textarea
-              id="rejection-reason"
-              value={rejectionReason}
-              onChange={(event) => setRejectionReason(event.target.value)}
-              placeholder="Missing government ID image and incomplete payout information."
-              disabled={status !== "REJECTED"}
-            />
-          </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
+        <div className="space-y-3">
+          {cleanersQuery.isLoading && <p className="font-mono-data text-muted-foreground">Loading onboarding queue...</p>}
+          {cleanersQuery.isError && <p className="font-mono-data text-destructive">Failed to load onboarding queue.</p>}
+          {!cleanersQuery.isLoading && !cleanersQuery.isError && (
+            <OnboardingQueue cleaners={normalizedCleaners} stats={stats} onSelect={(cleaner) => setSelectedCleanerId(cleaner.id)} />
+          )}
         </div>
 
-        <Button
-          onClick={() =>
-            reviewMutation.mutate({
-              selectedStatus: status,
-              reason: status === "REJECTED" ? rejectionReason.trim() : undefined,
-            })
-          }
-          disabled={!canSubmit || reviewMutation.isPending}
-        >
-          {reviewMutation.isPending ? "Submitting..." : "Submit Review"}
-        </Button>
-      </motion.div>
+        <div className="space-y-4">
+          {!selectedCleaner && (
+            <div className="surface-card p-8">
+              <p className="text-muted-foreground">Select a cleaner from the queue to review details.</p>
+            </div>
+          )}
 
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="surface-card p-5">
-        <h2 className="text-label text-muted-foreground mb-3">Recent Decisions (Current Session)</h2>
-        {decisionLog.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No decisions submitted yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {decisionLog.map((item) => (
-              <div key={`${item.cleanerId}-${item.timestamp}`} className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0">
-                <p className="font-mono-data text-sm">{item.cleanerId}</p>
-                <div className="flex items-center gap-2">
-                  <Badge variant={item.status === "APPROVED" ? "success" : "destructive"}>{item.status}</Badge>
-                  <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</span>
-                </div>
+          {selectedCleaner && (
+            <OnboardingDetail
+              cleaner={cleanerDetailQuery.data || selectedCleaner}
+              onBack={() => setSelectedCleanerId(null)}
+              onDecision={(cleanerId, nextStatus, reason) =>
+                reviewMutation.mutate({ cleanerId, nextStatus, reason })
+              }
+            />
+          )}
+
+          <div className="surface-card p-4">
+            <h3 className="text-label text-muted-foreground mb-2">Session Timeline</h3>
+            {timeline.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No decisions submitted in this session.</p>
+            ) : (
+              <div className="space-y-2">
+                {timeline.map((item) => (
+                  <p key={`${item.cleanerId}-${item.at}`} className="font-mono-data text-sm">
+                    {item.cleanerId} - {item.decision} - {new Date(item.at).toLocaleString()}
+                  </p>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,10 +1,14 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { CircleAlert } from "lucide-react";
 import { MetricCard } from "@/components/MetricCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { motion } from "framer-motion";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   revokeAllSessions,
   revokeCurrentSession,
@@ -35,6 +39,7 @@ const fadeUp = {
 
 export default function SessionsPage() {
   const queryClient = useQueryClient();
+  const [confirmText, setConfirmText] = useState("");
   const sessionsQuery = useQuery({ queryKey: ["session-anomalies"], queryFn: fetchSessionAnomalies });
 
   const revokeCurrentMutation = useMutation({
@@ -47,8 +52,16 @@ export default function SessionsPage() {
   });
   const revokeAllMutation = useMutation({
     mutationFn: revokeAllSessions,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session-anomalies"] }),
+    onSuccess: () => {
+      setConfirmText("");
+      queryClient.invalidateQueries({ queryKey: ["session-anomalies"] });
+    },
   });
+
+  const sortedEntries = useMemo(() => {
+    if (!sessionsQuery.data) return [] as Array<[string, number]>;
+    return Object.entries(sessionsQuery.data.active_sessions_by_admin).sort((a, b) => b[1] - a[1]);
+  }, [sessionsQuery.data]);
 
   if (sessionsQuery.isLoading) {
     return <p className="font-mono-data text-muted-foreground">Loading session anomalies...</p>;
@@ -59,7 +72,6 @@ export default function SessionsPage() {
   }
 
   const data = sessionsQuery.data;
-  const entries = Object.entries(data.active_sessions_by_admin).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-6 max-w-[1000px]">
@@ -82,13 +94,20 @@ export default function SessionsPage() {
       </div>
 
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="surface-card">
-        <div className="p-4 border-b border-border">
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <h3 className="text-label text-muted-foreground">Active Sessions by Admin</h3>
+          <span className="text-xs text-muted-foreground">Higher counts can indicate session sharing or token abuse.</span>
         </div>
         <motion.div variants={stagger} initial="hidden" animate="visible" className="divide-y divide-border">
-          {entries.map(([adminId, count]) => (
+          {sortedEntries.map(([adminId, count]) => (
             <motion.div key={adminId} variants={fadeUp} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors duration-150">
-              <span className="font-mono-data text-foreground">{adminId}</span>
+              <div className="space-y-1">
+                <span className="font-mono-data text-foreground">{adminId}</span>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <CircleAlert className="h-3.5 w-3.5" />
+                  Risk score inferred from active session volume only.
+                </div>
+              </div>
               <Badge variant={count > 3 ? "high" : "info"}>{count} sessions</Badge>
             </motion.div>
           ))}
@@ -96,51 +115,73 @@ export default function SessionsPage() {
       </motion.div>
 
       <div className="flex flex-wrap gap-3">
-        {[
-          {
-            label: "Revoke Current Session",
-            desc: "This will terminate your current session. You will be logged out immediately.",
-            btn: "Revoke",
-            variant: "outline" as const,
-            action: () => revokeCurrentMutation.mutate(),
-          },
-          {
-            label: "Revoke Other Sessions",
-            desc: "All sessions except your current one will be terminated.",
-            btn: "Revoke Others",
-            variant: "outline" as const,
-            action: () => revokeOthersMutation.mutate(),
-          },
-          {
-            label: "Revoke All Sessions",
-            desc: "This is a destructive action. ALL admin sessions will be terminated including yours.",
-            btn: "Revoke All",
-            variant: "destructive" as const,
-            action: () => revokeAllMutation.mutate(),
-          },
-        ].map((action) => (
-          <AlertDialog key={action.label}>
-            <AlertDialogTrigger asChild>
-              <motion.div whileTap={{ scale: 0.97 }}>
-                <Button variant={action.variant} size="sm">
-                  {action.label}
-                </Button>
-              </motion.div>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{action.label}</AlertDialogTitle>
-                <AlertDialogDescription>{action.desc}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={action.action}>
-                  {action.btn}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        ))}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm">Revoke Current Session</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke Current Session</AlertDialogTitle>
+              <AlertDialogDescription>
+                This terminates your current session and logs you out immediately.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeCurrentMutation.mutate()}>
+                Revoke
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm">Revoke Other Sessions</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke Other Sessions</AlertDialogTitle>
+              <AlertDialogDescription>
+                Terminates all sessions except your current one.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeOthersMutation.mutate()}>
+                Revoke Others
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm">Revoke All Sessions</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke All Sessions</AlertDialogTitle>
+              <AlertDialogDescription>
+                Type <span className="font-mono-data">REVOKE ALL</span> to confirm global revocation.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="revoke-all-confirm">Confirmation Text</Label>
+              <Input id="revoke-all-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={confirmText !== "REVOKE ALL" || revokeAllMutation.isPending}
+                onClick={() => revokeAllMutation.mutate()}
+              >
+                {revokeAllMutation.isPending ? "Revoking..." : "Revoke All"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

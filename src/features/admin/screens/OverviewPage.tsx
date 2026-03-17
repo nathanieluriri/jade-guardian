@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Globe, Shield } from "lucide-react";
 import { MetricCard } from "@/components/MetricCard";
@@ -13,6 +13,8 @@ import {
   fetchAlerts,
   fetchAuthHeatmap,
   fetchMonitoringOverview,
+  updateAlertAckState,
+  updateAlertReadState,
 } from "@/lib/api/admin-api";
 import { generateSparkline, metricTooltips, trendFromValue } from "@/lib/admin-ui";
 
@@ -27,13 +29,39 @@ const fadeUp = {
 };
 
 export default function OverviewPage() {
+  const queryClient = useQueryClient();
   const overviewQuery = useQuery({ queryKey: ["overview"], queryFn: fetchMonitoringOverview });
   const heatmapQuery = useQuery({ queryKey: ["overview", "heatmap"], queryFn: () => fetchAuthHeatmap(14) });
   const alertsQuery = useQuery({
     queryKey: ["overview", "alerts"],
     queryFn: () => fetchAlerts({ start: 0, stop: 4 }),
   });
+  const openAlertAttentionQuery = useQuery({
+    queryKey: ["open-alert-attention-count"],
+    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, start: 0, stop: 99 }),
+    refetchInterval: 30_000,
+  });
   const slaQuery = useQuery({ queryKey: ["overview", "sla"], queryFn: () => fetchAlertSla(24) });
+  const markReadMutation = useMutation({
+    mutationFn: ({ alertId, isRead }: { alertId: string; isRead: boolean }) => updateAlertReadState(alertId, isRead),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["open-alert-attention-count"] }),
+        queryClient.invalidateQueries({ queryKey: ["overview", "alerts"] }),
+        queryClient.invalidateQueries({ queryKey: ["alerts"] }),
+      ]);
+    },
+  });
+  const ackMutation = useMutation({
+    mutationFn: ({ alertId, ack }: { alertId: string; ack: boolean }) => updateAlertAckState(alertId, ack),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["open-alert-attention-count"] }),
+        queryClient.invalidateQueries({ queryKey: ["overview", "alerts"] }),
+        queryClient.invalidateQueries({ queryKey: ["alerts"] }),
+      ]);
+    },
+  });
 
   const ov = overviewQuery.data;
   const alertSla = slaQuery.data;
@@ -106,11 +134,11 @@ export default function OverviewPage() {
         <motion.div variants={fadeUp}>
           <MetricCard
             label="Open Alerts"
-            value={ov.open_alert_count}
-            variant={ov.open_alert_count > 5 ? "danger" : "default"}
+            value={openAlertAttentionQuery.data?.length ?? 0}
+            variant={(openAlertAttentionQuery.data?.length ?? 0) > 5 ? "danger" : "default"}
             tooltip={metricTooltips.open_alerts}
-            sparkline={generateSparkline(ov.open_alert_count)}
-            trend={trendFromValue(ov.open_alert_count)}
+            sparkline={generateSparkline(openAlertAttentionQuery.data?.length ?? 0)}
+            trend={trendFromValue(openAlertAttentionQuery.data?.length ?? 0)}
           />
         </motion.div>
         <motion.div variants={fadeUp}>
@@ -205,7 +233,13 @@ export default function OverviewPage() {
         <h2 className="text-label text-muted-foreground mb-3">Recent Alerts</h2>
         <div className="grid gap-3">
           {recentAlerts.map((alert, i) => (
-            <AlertCard key={alert._id} alert={alert} index={i} />
+            <AlertCard
+              key={alert._id}
+              alert={alert}
+              index={i}
+              onAcknowledge={(alertId, ack) => ackMutation.mutate({ alertId, ack })}
+              onReadToggle={(alertId, isRead) => markReadMutation.mutate({ alertId, isRead })}
+            />
           ))}
         </div>
       </div>

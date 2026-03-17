@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Check, Eye, Search, Globe } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 interface Alert {
@@ -49,9 +50,11 @@ interface AlertCardProps {
   index: number;
   onAcknowledge?: (alertId: string, nextAck: boolean) => void;
   onReadToggle?: (alertId: string, nextRead: boolean) => void;
+  onInvestigate?: (alertId: string) => void;
 }
 
-export function AlertCard({ alert, index, onAcknowledge, onReadToggle }: AlertCardProps) {
+export function AlertCard({ alert, index, onAcknowledge, onReadToggle, onInvestigate }: AlertCardProps) {
+  const router = useRouter();
   const [acked, setAcked] = useState(!!alert.ack_owner_id);
   const [read, setRead] = useState(alert.is_read);
 
@@ -65,6 +68,13 @@ export function AlertCard({ alert, index, onAcknowledge, onReadToggle }: AlertCa
     const next = !read;
     setRead(next);
     onReadToggle?.(alert._id, next);
+  };
+
+  const handleInvestigate = () => {
+    onInvestigate?.(alert._id);
+    router.push(
+      `/admin/security/audit?preset=suspicious-login&endpoint=${encodeURIComponent("/v1/admins/monitoring/alerts")}&target=${encodeURIComponent(alert._id)}`
+    );
   };
 
   return (
@@ -107,7 +117,7 @@ export function AlertCard({ alert, index, onAcknowledge, onReadToggle }: AlertCa
           </Button>
         </motion.div>
         <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" variant="outline" onClick={() => {}}>
+          <Button size="sm" variant="outline" onClick={handleInvestigate}>
             <Search className="h-3.5 w-3.5" />
             Investigate
           </Button>

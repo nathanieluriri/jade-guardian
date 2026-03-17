@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Bell, Monitor, Shield } from "lucide-react";
+import { Search, Bell, Monitor, Shield, Users, UserCog } from "lucide-react";
 import {
   CommandDialog,
   CommandInput,
@@ -83,6 +83,8 @@ export function CommandBar() {
               { label: "Overview", path: "/admin/overview", icon: Monitor },
               { label: "Sessions", path: "/admin/security/sessions", icon: Monitor },
               { label: "Permissions", path: "/admin/permissions/catalog", icon: Shield },
+              { label: "Team", path: "/admin/team", icon: UserCog },
+              { label: "Users", path: "/admin/users", icon: Users },
             ].map((item) => (
               <CommandItem
                 key={item.path}

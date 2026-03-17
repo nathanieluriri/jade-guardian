@@ -15,6 +15,8 @@ const routeTitles: Record<string, string> = {
   "/admin/permissions/catalog": "Permission Catalog",
   "/admin/permissions/templates": "Role Templates",
   "/admin/onboarding/cleaners": "Cleaner Onboarding",
+  "/admin/team": "Team",
+  "/admin/users": "Users",
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

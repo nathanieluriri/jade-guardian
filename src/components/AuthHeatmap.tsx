@@ -147,7 +147,7 @@ export function AuthHeatmap({ items, latencyItems, trafficItems }: AuthHeatmapPr
 
           {/* Grid */}
           {DAYS.map((day, dayIdx) => (
-            <>
+            <div key={`day-row-${dayIdx}`} className="contents">
               <div key={`label-${dayIdx}`} className="font-mono-data text-muted-foreground flex items-center pr-1">
                 {day}
               </div>
@@ -172,7 +172,7 @@ export function AuthHeatmap({ items, latencyItems, trafficItems }: AuthHeatmapPr
                   </Tooltip>
                 );
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>

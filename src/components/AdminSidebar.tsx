@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   Shield,
   LayoutDashboard,
@@ -33,6 +34,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { fetchAlerts } from "@/lib/api/admin-api";
 
 const sections = [
   {
@@ -49,6 +52,8 @@ const sections = [
     items: [
       { title: "Permission Catalog", url: "/admin/permissions/catalog", icon: Key },
       { title: "Role Templates", url: "/admin/permissions/templates", icon: Users },
+      { title: "Team", url: "/admin/team", icon: Shield },
+      { title: "Users", url: "/admin/users", icon: Users },
     ],
   },
   {
@@ -61,6 +66,12 @@ export function AdminSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const alertsQuery = useQuery({
+    queryKey: ["open-alert-attention-count"],
+    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, start: 0, stop: 99 }),
+    refetchInterval: 30_000,
+  });
+  const alertAttentionCount = alertsQuery.data?.length || 0;
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(sections.map((s) => [s.label, true]))
   );
@@ -120,6 +131,17 @@ export function AdminSidebar() {
                                     )}
                                     <item.icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
                                     {!collapsed && <span>{item.title}</span>}
+                                    {item.url === "/admin/security/alerts" && alertAttentionCount > 0 && (
+                                      <Badge
+                                        variant="high"
+                                        className={cn(
+                                          "ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data",
+                                          collapsed && "absolute -top-1 -right-1 ml-0"
+                                        )}
+                                      >
+                                        {alertAttentionCount > 99 ? "99+" : alertAttentionCount}
+                                      </Badge>
+                                    )}
                                   </Link>
                                 </SidebarMenuButton>
                               </TooltipTrigger>
