@@ -1,0 +1,107 @@
+{
+  "title": "Sentinel Admin - Alert Center Redesign Audit",
+  "project": "Marcus Cleaning Admin Frontend",
+  "date": "2026-03-17",
+  "macro_bets": [
+    {
+      "category": "efficiency",
+      "description": "Reduce operator cognitive load and click cost for high-volume alert triage.",
+      "alignment": "strong"
+    },
+    {
+      "category": "accuracy",
+      "description": "Decrease accidental actions by enforcing clear selection-state workflows.",
+      "alignment": "strong"
+    }
+  ],
+  "jtbd": [
+    {
+      "user": "Admin analyst",
+      "situation": "triaging many alerts during a monitoring window",
+      "motivation": "identify and process critical items quickly",
+      "outcome": "resolve alerts with fewer errors and less fatigue"
+    }
+  ],
+  "visual_hierarchy": {
+    "title": "Visual Hierarchy",
+    "checks": [
+      {
+        "label": "Filter controls grouped by purpose",
+        "status": "pass",
+        "notes": "Filter bar now contains only visibility controls; actions moved to contextual selection toolbar."
+      },
+      {
+        "label": "Read vs unread emphasis",
+        "status": "pass",
+        "notes": "Unread rows use subtle tint and stronger title weight."
+      },
+      {
+        "label": "Severity prominence",
+        "status": "pass",
+        "notes": "High-contrast severity badges retained and standardized."
+      }
+    ]
+  },
+  "visual_style": {
+    "title": "Visual Style",
+    "checks": [
+      {
+        "label": "State-based visual language consistency",
+        "status": "pass",
+        "notes": "Selection mode uses shared accent surface and selected-count badge."
+      },
+      {
+        "label": "Whitespace and row rhythm",
+        "status": "pass",
+        "notes": "Card spacing and row density increased for readability."
+      },
+      {
+        "label": "Motion quality",
+        "status": "pass",
+        "notes": "Toolbar transitions use short fade/slide motion."
+      }
+    ]
+  },
+  "accessibility": {
+    "title": "Accessibility",
+    "checks": [
+      {
+        "label": "Keyboard reachable row selection",
+        "status": "pass",
+        "notes": "Checkbox controls are keyboard accessible and labeled."
+      },
+      {
+        "label": "Contrast and status signaling",
+        "status": "warn",
+        "notes": "Color and iconography improved; full AA contrast validation still required in visual QA."
+      },
+      {
+        "label": "Tooltip readability",
+        "status": "pass",
+        "notes": "Exact timestamp exposed via title tooltip."
+      }
+    ]
+  },
+  "priority_fixes": [
+    {
+      "rank": 1,
+      "title": "Selection-state toolbar pattern",
+      "description": "Bulk actions appear only when one or more rows are selected; row-level actions are suppressed in selection mode.",
+      "framework_reference": "22-patterns-cognitive-load.md"
+    },
+    {
+      "rank": 2,
+      "title": "Filter/action category separation",
+      "description": "Filter row only changes visibility; data-mutating actions moved into contextual toolbar.",
+      "framework_reference": "23-patterns-visual-hierarchy.md"
+    },
+    {
+      "rank": 3,
+      "title": "Readable temporal context",
+      "description": "Relative time in primary UI with exact timestamp on hover to reduce visual noise.",
+      "framework_reference": "25-patterns-feedback.md"
+    }
+  ],
+  "notes": "This audit captures implementation intent and post-redesign review criteria for iterative UX refinement."
+}
+

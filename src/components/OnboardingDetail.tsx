@@ -26,13 +26,14 @@ import {
   XCircle,
   AlertTriangle,
   ExternalLink,
+  Copy,
 } from "lucide-react";
 import {
   type CleanerOnboarding,
   SERVICE_LABELS,
   EXPERIENCE_LABELS,
   DAY_LABELS,
-} from "@/lib/mock-onboarding-data";
+} from "@/lib/onboarding";
 
 interface OnboardingDetailProps {
   cleaner: CleanerOnboarding;
@@ -91,6 +92,11 @@ export function OnboardingDetail({ cleaner, onBack, onDecision }: OnboardingDeta
     p.services.length > 0;
 
   const canReject = rejectionReason.trim().length >= 10;
+  const rejectTemplates = [
+    "Government ID image is unreadable. Upload a clearer image with all corners visible.",
+    "Payout information is incomplete. Provide a valid account number and bank details.",
+    "Service coverage and weekly availability are insufficient for approval.",
+  ];
 
   return (
     <div className="space-y-4">
@@ -114,7 +120,21 @@ export function OnboardingDetail({ cleaner, onBack, onDecision }: OnboardingDeta
               {cleaner.onboarding_status}
             </Badge>
           </div>
-          <p className="font-mono-data text-muted-foreground">{cleaner.id}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="font-mono-data text-muted-foreground">
+              Cleaner ID (source of truth): <span className="text-foreground">{cleaner.id}</span>
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2"
+              onClick={async () => {
+                await navigator.clipboard.writeText(cleaner.id);
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -367,6 +387,19 @@ export function OnboardingDetail({ cleaner, onBack, onDecision }: OnboardingDeta
             className="mt-2"
             rows={3}
           />
+          <div className="flex flex-wrap gap-2 mt-2">
+            {rejectTemplates.map((template) => (
+              <Button
+                key={template}
+                variant="outline"
+                size="sm"
+                onClick={() => setRejectionReason(template)}
+                className="text-left whitespace-normal h-auto"
+              >
+                {template}
+              </Button>
+            ))}
+          </div>
           {rejectionReason.length > 0 && rejectionReason.length < 10 && (
             <p className="font-mono-data text-destructive">Reason must be at least 10 characters.</p>
           )}
