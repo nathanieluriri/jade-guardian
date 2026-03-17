@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search, Bell, Monitor, FileSearch, Shield } from "lucide-react";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Search, Bell, Monitor, Shield } from "lucide-react";
 import {
   CommandDialog,
   CommandInput,
@@ -10,11 +12,19 @@ import {
   CommandItem,
   CommandSeparator,
 } from "@/components/ui/command";
-import { mockAlerts, mockAuditEvents } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAlerts } from "@/lib/api/admin-api";
 
 export function CommandBar() {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
+  const router = useRouter();
+  const alertsQuery = useQuery({
+    queryKey: ["command-alerts"],
+    queryFn: () => fetchAlerts({ start: 0, stop: 6 }),
+    staleTime: 30_000,
+  });
+
+  const alerts = useMemo(() => alertsQuery.data || [], [alertsQuery.data]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -34,23 +44,23 @@ export function CommandBar() {
         className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-3 py-1.5 text-sm text-muted-foreground hover:border-border transition-colors"
       >
         <Search className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Search…</span>
+        <span className="hidden sm:inline">Search...</span>
         <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-border/50 bg-muted px-1.5 font-mono-data text-[10px] text-muted-foreground">
-          ⌘K
+          Ctrl+K
         </kbd>
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search alerts, IPs, users, events…" />
+        <CommandInput placeholder="Search alerts or navigate..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
 
           <CommandGroup heading="Alerts">
-            {mockAlerts.slice(0, 4).map((alert) => (
+            {alerts.map((alert) => (
               <CommandItem
                 key={alert._id}
                 onSelect={() => {
-                  navigate("/admin/security/alerts");
+                  router.push("/admin/security/alerts");
                   setOpen(false);
                 }}
               >
@@ -68,28 +78,6 @@ export function CommandBar() {
 
           <CommandSeparator />
 
-          <CommandGroup heading="Audit Events">
-            {mockAuditEvents.slice(0, 3).map((evt) => (
-              <CommandItem
-                key={evt.id}
-                onSelect={() => {
-                  navigate("/admin/security/audit");
-                  setOpen(false);
-                }}
-              >
-                <FileSearch className="mr-2 h-4 w-4 text-muted-foreground" />
-                <div className="flex flex-col">
-                  <span className="text-sm">{evt.event_type.replace(/_/g, " ")}</span>
-                  <span className="text-xs text-muted-foreground font-mono-data">
-                    IP: {evt.request.ip} · {evt.request.geo_hint}
-                  </span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-
-          <CommandSeparator />
-
           <CommandGroup heading="Quick Navigation">
             {[
               { label: "Overview", path: "/admin/overview", icon: Monitor },
@@ -99,7 +87,7 @@ export function CommandBar() {
               <CommandItem
                 key={item.path}
                 onSelect={() => {
-                  navigate(item.path);
+                  router.push(item.path);
                   setOpen(false);
                 }}
               >

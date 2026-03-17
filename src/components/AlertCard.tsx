@@ -1,3 +1,5 @@
+"use client";
+
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,9 +44,28 @@ const severityBorderColor: Record<string, string> = {
   info: "border-l-info",
 };
 
-export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
+interface AlertCardProps {
+  alert: Alert;
+  index: number;
+  onAcknowledge?: (alertId: string, nextAck: boolean) => void;
+  onReadToggle?: (alertId: string, nextRead: boolean) => void;
+}
+
+export function AlertCard({ alert, index, onAcknowledge, onReadToggle }: AlertCardProps) {
   const [acked, setAcked] = useState(!!alert.ack_owner_id);
   const [read, setRead] = useState(alert.is_read);
+
+  const handleAcknowledge = () => {
+    const next = !acked;
+    setAcked(next);
+    onAcknowledge?.(alert._id, next);
+  };
+
+  const handleReadToggle = () => {
+    const next = !read;
+    setRead(next);
+    onReadToggle?.(alert._id, next);
+  };
 
   return (
     <motion.div
@@ -58,19 +79,12 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
       )}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="font-mono-data text-muted-foreground uppercase tracking-widest">
-          {alert.rule_key}
-        </span>
-        <Badge variant={severityMap[alert.severity] || "secondary"}>
-          {alert.severity}
-        </Badge>
+        <span className="font-mono-data text-muted-foreground uppercase tracking-widest">{alert.rule_key}</span>
+        <Badge variant={severityMap[alert.severity] || "secondary"}>{alert.severity}</Badge>
       </div>
-      <h3 className="text-[15px] font-semibold text-foreground leading-tight text-balance">
-        {alert.title}
-      </h3>
+      <h3 className="text-[15px] font-semibold text-foreground leading-tight text-balance">{alert.title}</h3>
       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{alert.summary}</p>
 
-      {/* Inline context: source IP + affected user */}
       {(alert.source_ip || alert.affected_user) && (
         <div className="mt-1.5 flex items-center gap-3 font-mono-data text-muted-foreground">
           {alert.source_ip && (
@@ -79,24 +93,15 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
               {alert.source_ip}
             </span>
           )}
-          {alert.affected_user && (
-            <span>User: {alert.affected_user}</span>
-          )}
+          {alert.affected_user && <span>User: {alert.affected_user}</span>}
         </div>
       )}
 
-      <div className="mt-1 font-mono-data text-muted-foreground">
-        Fired {timeAgo(alert.last_fired_at)}
-      </div>
+      <div className="mt-1 font-mono-data text-muted-foreground">Fired {timeAgo(alert.last_fired_at)}</div>
 
-      {/* Quick actions — visible on hover */}
       <div className="mt-3 flex flex-wrap gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
         <motion.div whileTap={{ scale: 0.97 }}>
-          <Button
-            size="sm"
-            variant={acked ? "default" : "outline"}
-            onClick={() => setAcked(!acked)}
-          >
+          <Button size="sm" variant={acked ? "default" : "outline"} onClick={handleAcknowledge}>
             <Check className="h-3.5 w-3.5" />
             {acked ? "Acknowledged" : "Acknowledge"}
           </Button>
@@ -108,7 +113,7 @@ export function AlertCard({ alert, index }: { alert: Alert; index: number }) {
           </Button>
         </motion.div>
         <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" variant="ghost" onClick={() => setRead(!read)}>
+          <Button size="sm" variant="ghost" onClick={handleReadToggle}>
             <Eye className="h-3.5 w-3.5" />
             {read ? "Unread" : "Dismiss"}
           </Button>
