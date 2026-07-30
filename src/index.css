@@ -58,7 +58,7 @@
     --sidebar-muted: 142 20% 60%; /* Muted text */
     --sidebar-group-border: 142 45% 22%;
 
-    /* Sentinel-specific tokens */
+    /* Cleanm-specific tokens */
     --surface-shadow: 0 0 0 1px hsla(142, 20%, 80%, 0.4), 0 1px 3px hsla(142, 20%, 50%, 0.08);
     --surface-shadow-hover: 0 0 0 1px hsla(142, 20%, 70%, 0.5), 0 4px 12px hsla(142, 30%, 50%, 0.12);
     --emerald-50: 142 77% 96%;

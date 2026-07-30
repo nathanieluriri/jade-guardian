@@ -1,27 +1,56 @@
 "use client";
 
+import { useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/AdminSidebar";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { CommandBar } from "@/components/CommandBar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-const routeTitles: Record<string, string> = {
-  "/admin/overview": "Overview",
-  "/admin/security/alerts": "Alerts",
-  "/admin/security/sessions": "Sessions",
-  "/admin/security/audit": "Audit Log",
-  "/admin/permissions/catalog": "Permission Catalog",
-  "/admin/permissions/templates": "Role Templates",
-  "/admin/onboarding/cleaners": "Cleaner Onboarding",
-  "/admin/team": "Team",
-  "/admin/users": "Users",
-};
+import { getAdminRouteTitle } from "@/lib/admin-access";
+import { useAdminTransition } from "@/components/admin-transition-provider";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const pageTitle = routeTitles[pathname || ""] || "Dashboard";
+  const routeKey = pathname || "";
+  const pageTitle = getAdminRouteTitle(pathname || "");
+  const { activeRouteKey, phase, transitionId, beginRouteChange, markEntering, markEntered } = useAdminTransition();
+
+  useEffect(() => {
+    if (!routeKey) return;
+    beginRouteChange(routeKey);
+  }, [beginRouteChange, routeKey]);
+
+  useEffect(() => {
+    if (!routeKey) return;
+    if (activeRouteKey !== routeKey || phase !== "exiting") return;
+    const currentTransitionId = transitionId;
+    const frame = window.requestAnimationFrame(() => {
+      markEntering(currentTransitionId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeRouteKey, markEntering, phase, routeKey, transitionId]);
+
+  useEffect(() => {
+    if (!routeKey) return;
+    if (activeRouteKey !== routeKey || phase !== "entering") return;
+    const currentTransitionId = transitionId;
+    const timer = window.setTimeout(() => {
+      markEntered(currentTransitionId);
+    }, 240);
+    return () => window.clearTimeout(timer);
+  }, [activeRouteKey, markEntered, phase, routeKey, transitionId]);
+
+  useEffect(() => {
+    if (!routeKey) return;
+    if (activeRouteKey !== routeKey || phase === "idle") return;
+    const currentTransitionId = transitionId;
+    const watchdog = window.setTimeout(() => {
+      markEntered(currentTransitionId);
+    }, 700);
+    return () => window.clearTimeout(watchdog);
+  }, [activeRouteKey, markEntered, phase, routeKey, transitionId]);
+
+  const isExiting = activeRouteKey === routeKey && phase === "exiting";
 
   return (
     <SidebarProvider>
@@ -32,7 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="flex items-center gap-3">
               <SidebarTrigger className="mr-1" />
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Sentinel</span>
+                <span className="text-muted-foreground">Cleanm</span>
                 <span className="text-muted-foreground/40">/</span>
                 <span className="font-medium text-foreground">{pageTitle}</span>
               </div>
@@ -51,17 +80,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </header>
           <main className="flex-1 overflow-auto p-4 sm:p-6 bg-background">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={pathname}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25, ease: [0.2, 0, 0, 1] }}
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
+            <div
+              data-route-transition-phase={phase}
+              style={{
+                opacity: isExiting ? 0 : 1,
+                transform: isExiting ? "translateY(-8px)" : "translateY(0)",
+                transition: "opacity 240ms cubic-bezier(0.2, 0, 0, 1), transform 240ms cubic-bezier(0.2, 0, 0, 1)",
+                willChange: "opacity, transform",
+              }}
+            >
+              {children}
+            </div>
           </main>
         </div>
       </div>

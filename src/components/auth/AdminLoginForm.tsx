@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Shield } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,12 +32,19 @@ export function AdminLoginForm() {
     <div className="min-h-screen grid place-items-center p-4">
       <form onSubmit={onSubmit} className="surface-card w-full max-w-md p-6 space-y-5">
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Shield className="h-5 w-5" />
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 p-1">
+            <Image
+              src="/company_logo.png"
+              alt="Cleanm logo"
+              width={28}
+              height={28}
+              className="h-7 w-7 object-contain"
+              priority
+            />
           </span>
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Admin Login</h1>
-            <p className="text-sm text-muted-foreground">Sign in to Sentinel admin console</p>
+            <p className="text-sm text-muted-foreground">Sign in to Cleanm admin console</p>
           </div>
         </div>
 

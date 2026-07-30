@@ -24,12 +24,18 @@ async function parseError(response: Response): Promise<ApiError> {
       detail?: string;
       code?: string;
       error_code?: string;
+      data?: {
+        code?: string;
+        details?: unknown;
+      };
     };
+
+    const resolvedCode = body?.code || body?.error_code || body?.data?.code;
 
     return {
       status: response.status,
       message: body?.message || body?.detail || fallback,
-      code: body?.code || body?.error_code,
+      code: resolvedCode,
       requestId: normalizeRequestId(body),
       details: body,
     };
@@ -105,7 +111,7 @@ export async function apiRequest<T>(
     headers,
   });
 
-  if (response.status === 401 && auth && retryOnUnauthorized) {
+  if ((response.status === 401 || response.status === 403) && auth && retryOnUnauthorized) {
     const refreshedToken = await refreshAccessToken();
     if (refreshedToken) {
       return apiRequest<T>(path, init, { auth, retryOnUnauthorized: false });
@@ -114,7 +120,7 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const error = await parseError(response);
-    if (auth && (error.status === 401 || error.status === 403 || error.code === "AUTH_ROLE_MISMATCH")) {
+    if (auth && (error.status === 401 || error.code === "AUTH_ROLE_MISMATCH")) {
       clearAuthState();
     }
     throw error;

@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import AdminLayout from "@/components/AdminLayout";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
+import { AdminTransitionProvider } from "@/components/admin-transition-provider";
 
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,7 +14,9 @@ export default function AdminRootLayout({ children }: { children: React.ReactNod
 
   return (
     <AdminAuthGate>
-      <AdminLayout>{children}</AdminLayout>
+      <AdminTransitionProvider>
+        <AdminLayout>{children}</AdminLayout>
+      </AdminTransitionProvider>
     </AdminAuthGate>
   );
 }

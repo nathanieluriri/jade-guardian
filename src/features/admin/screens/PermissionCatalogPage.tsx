@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchDeniedPermissions, fetchPermissionCatalog, fetchRoleTemplate } from "@/lib/api/admin-api";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
 
 const itemVariants = {
   hidden: { opacity: 0, y: 8 },
@@ -25,13 +26,27 @@ export default function PermissionCatalogPage() {
   const deniedQuery = useQuery({
     queryKey: ["permissions", "denied-top"],
     queryFn: () => fetchDeniedPermissions(24, 10),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
   const catalogQuery = useQuery({
     queryKey: ["permissions", "catalog"],
     queryFn: fetchPermissionCatalog,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
-  const cleanerTemplateQuery = useQuery({ queryKey: ["role-template", "cleaner"], queryFn: () => fetchRoleTemplate("cleaner") });
-  const customerTemplateQuery = useQuery({ queryKey: ["role-template", "customer"], queryFn: () => fetchRoleTemplate("customer") });
+  const cleanerTemplateQuery = useQuery({
+    queryKey: ["role-template", "cleaner"],
+    queryFn: () => fetchRoleTemplate("cleaner"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const customerTemplateQuery = useQuery({
+    queryKey: ["role-template", "customer"],
+    queryFn: () => fetchRoleTemplate("customer"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
 
   const denied = deniedQuery.data || [];
   const catalog = catalogQuery.data;
@@ -62,11 +77,11 @@ export default function PermissionCatalogPage() {
 
   return (
     <div className="space-y-5 max-w-[1200px]">
-      <motion.h1 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-semibold tracking-tighter">
+      <h1 className="text-2xl font-semibold tracking-tighter">
         Permission Catalog
-      </motion.h1>
+      </h1>
 
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="surface-card p-4 space-y-3">
+      <div className="surface-card p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-label text-muted-foreground">Endpoint Discovery</h3>
           <div className="flex items-center gap-2">
@@ -86,19 +101,18 @@ export default function PermissionCatalogPage() {
           </div>
         </div>
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search resource, method, path, key, summary" />
-      </motion.div>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="surface-card"
-      >
+      <div className="surface-card">
         <div className="p-4 border-b border-border">
           <h3 className="text-label text-muted-foreground">Top Denied Permissions (24h)</h3>
         </div>
         <div className="divide-y divide-border">
-          {deniedQuery.isLoading && <p className="px-4 py-3 font-mono-data text-muted-foreground">Loading denied permissions...</p>}
+          {deniedQuery.isLoading && (
+            <div className="px-4 py-3">
+              <AdminLoadingState label="Loading denied permissions..." />
+            </div>
+          )}
           {deniedQuery.isError && <p className="px-4 py-3 font-mono-data text-destructive">Failed to load denied permissions.</p>}
           {denied.map((item, i) => (
             <motion.div
@@ -123,10 +137,10 @@ export default function PermissionCatalogPage() {
             </motion.div>
           ))}
         </div>
-      </motion.div>
+      </div>
 
       <div className="space-y-4">
-        {catalogQuery.isLoading && <p className="font-mono-data text-muted-foreground">Loading permission catalog...</p>}
+        {catalogQuery.isLoading && <AdminLoadingState label="Loading permission catalog..." />}
         {catalogQuery.isError && <p className="font-mono-data text-destructive">Failed to load permission catalog.</p>}
         {!catalogQuery.isLoading && !catalogQuery.isError && filteredGroups.length === 0 && (
           <div className="surface-card p-8 text-center text-muted-foreground">No endpoints match your search.</div>

@@ -22,13 +22,88 @@ export interface AdminProfile {
   email_verified?: boolean;
   last_auth_at?: number | null;
   permissionList?: {
-    permissions: Array<{ name: string; methods: string[]; path: string; key?: string; description?: string }>;
+    permissions: Array<string | { name: string; methods: string[]; path: string; key?: string; description?: string }>;
   };
 }
 
 export interface AdminLoginResponse {
   access_token: string;
   refresh_token: string;
+}
+
+export interface PermissionGroupPermission {
+  key?: string;
+  name?: string;
+  path?: string;
+  methods?: string[];
+  description?: string;
+}
+
+export interface AdminPermissionGroup {
+  id?: string;
+  _id?: string;
+  name: string;
+  description?: string;
+  is_built_in?: boolean;
+  source?: "built_in" | "custom" | string;
+  type?: "built_in" | "custom" | string;
+  permissions?: Array<string | PermissionGroupPermission>;
+}
+
+export interface AdminPermissionGroupsResponse {
+  builtIn?: AdminPermissionGroup[];
+  custom?: AdminPermissionGroup[];
+}
+
+export interface AdminElevationRequestStatus {
+  request_id?: string;
+  status?: "PENDING" | "APPROVED" | "REJECTED" | string;
+  reason?: string | null;
+  requestedPermissions?: string[];
+  requestedPermissionGroups?: string[];
+  grantedPermissions?: string[];
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: number | null;
+  date_created?: number | null;
+  date_updated?: number | null;
+}
+
+export type ElevationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface ElevationRequestItem {
+  requestId: string;
+  adminId: string;
+  status: ElevationStatus;
+  reason: string | null;
+  requestedPermissions: string[];
+  requestedPermissionGroups: string[];
+  grantedPermissions: string[];
+  reviewedBy: string | null;
+  reviewedAt: number | null;
+  decisionNote: string | null;
+  dateCreated: number | null;
+  lastUpdated: number | null;
+}
+
+export interface DecideElevationRequestPayload {
+  decision: "APPROVED" | "REJECTED";
+  grantedPermissions?: string[];
+  note?: string | null;
+}
+
+export interface DecideElevationResponse {
+  requestId: string;
+  status: ElevationStatus;
+  grantedPermissions: string[];
+  decisionNote: string | null;
+  reviewedBy: string;
+  reviewedAt: number;
+}
+
+export interface SubmitElevationRequestPayload {
+  requestedPermissionGroups: string[];
+  reason: string;
 }
 
 export interface AdminRefreshResponse {
@@ -311,3 +386,86 @@ export interface SignupTrendPoint {
   total?: number;
   [key: string]: unknown;
 }
+
+export interface AdminAutocompleteUser {
+  id?: string;
+  _id?: string;
+  firstName?: string;
+  lastName?: string;
+  full_name?: string;
+  email?: string;
+  allow_admin_selection?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AdminUsersAutocompleteResponse {
+  customers?: AdminAutocompleteUser[];
+  cleaners?: AdminAutocompleteUser[];
+}
+
+export interface AdminCustomerPlaceOut {
+  place_id: string;
+  label?: string;
+  name?: string;
+  formatted_address?: string;
+  longitude?: number;
+  latitude?: number;
+  country_code?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface ConciergeBookingDuration {
+  hours: number;
+  minutes: number;
+}
+
+export interface ConciergeBookingExtras {
+  add_ons: unknown[];
+  [key: string]: unknown;
+}
+
+export interface ConciergeBookingCreateRequest {
+  customer_id: string;
+  place_id: string;
+  cleaner_id: string;
+  schedule: number;
+  extras: ConciergeBookingExtras;
+  service: string;
+  duration: ConciergeBookingDuration;
+  custom_details: Record<string, unknown> | null;
+}
+
+export interface ConciergeBookingCreateResult {
+  booking?: Record<string, unknown>;
+  concierge_record?: Record<string, unknown>;
+}
+
+export interface AdminCreateCustomerPlaceRequest {
+  admin_id: string;
+  label: string;
+  place_id: string;
+  isDefault?: boolean;
+}
+
+export interface PlacesAutocompleteItem {
+  place_id: string;
+  name?: string;
+  formatted_address?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface PlaceDetailsOut extends PlacesAutocompleteItem {
+  longitude?: number;
+  latitude?: number;
+  country_code?: string;
+}
+
+export interface AdminResourceItem {
+  id?: string;
+  _id?: string;
+  [key: string]: unknown;
+}
+
+export type AdminResourcePayload = Record<string, unknown>;

@@ -32,11 +32,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AdminProfile } from "@/lib/api/types";
+import { useAdminProfile } from "@/hooks/use-admin-auth";
+import { canAccessAdminAction } from "@/lib/admin-access";
+
+function resolveAdminId(admin: Partial<AdminProfile>): string {
+  if (typeof admin.id === "string" && admin.id.trim()) return admin.id;
+  return "unknown";
+}
 
 function resolveDisplayName(admin: AdminProfile): string {
   if (admin.full_name?.trim()) return admin.full_name;
   if (admin.email) return admin.email.split("@")[0];
-  return admin.id;
+  return resolveAdminId(admin);
 }
 
 function formatLastAuth(lastAuth?: number | null): string {
@@ -45,17 +52,20 @@ function formatLastAuth(lastAuth?: number | null): string {
 }
 
 function exportInviteText(email: string) {
-  return `Welcome to Admin Sentinel. Login with ${email} and complete credential setup in the security center.`;
+  return `Welcome to Cleanm Admin. Login with ${email} and complete credential setup in the security center.`;
 }
 
 export default function TeamPage() {
   const queryClient = useQueryClient();
+  const profileQuery = useAdminProfile();
   const [start, setStart] = useState(0);
   const [stop] = useState(20);
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [form, setForm] = useState({ full_name: "", email: "", password: "" });
+  const canCreateAdmin = canAccessAdminAction({ method: "POST", path: "/v1/admins/signup" }, profileQuery.data);
+  const canDeleteOwnAccount = canAccessAdminAction({ method: "DELETE", path: "/v1/admins/account" }, profileQuery.data);
 
   const adminsQuery = useQuery({
     queryKey: ["admins", { start, stop, search }],
@@ -94,8 +104,9 @@ export default function TeamPage() {
     const q = search.trim().toLowerCase();
     if (!q) return all;
     return all.filter((admin) => {
+      const adminId = resolveAdminId(admin).toLowerCase();
       return (
-        admin.id.toLowerCase().includes(q) ||
+        adminId.includes(q) ||
         (admin.email || "").toLowerCase().includes(q) ||
         (admin.full_name || "").toLowerCase().includes(q)
       );
@@ -111,7 +122,7 @@ export default function TeamPage() {
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2" disabled={!canCreateAdmin}>
               <UserPlus className="h-4 w-4" />
               Invite Admin
             </Button>
@@ -138,7 +149,7 @@ export default function TeamPage() {
             <DialogFooter>
               <Button
                 onClick={() => createMutation.mutate(form)}
-                disabled={createMutation.isPending || !form.full_name.trim() || !form.email.trim() || !form.password.trim()}
+                disabled={createMutation.isPending || !canCreateAdmin || !form.full_name.trim() || !form.email.trim() || !form.password.trim()}
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
@@ -198,7 +209,7 @@ export default function TeamPage() {
               )}
               {filteredAdmins.map((admin, index) => (
                 <motion.tr
-                  key={admin.id || `${admin.email}-${index}`}
+                  key={`${resolveAdminId(admin)}-${admin.email || "no-email"}-${index}`}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.02 }}
@@ -213,7 +224,7 @@ export default function TeamPage() {
                     <Badge variant={admin.email_verified ? "success" : "secondary"}>{admin.email_verified ? "Verified" : "Pending"}</Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatLastAuth(admin.last_auth_at)}</TableCell>
-                  <TableCell className="font-mono-data text-xs">{admin.id}</TableCell>
+                  <TableCell className="font-mono-data text-xs">{resolveAdminId(admin)}</TableCell>
                 </motion.tr>
               ))}
             </TableBody>
@@ -236,7 +247,7 @@ export default function TeamPage() {
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="gap-2">
+                <Button variant="destructive" className="gap-2" disabled={!canDeleteOwnAccount}>
                   <Trash2 className="h-4 w-4" />
                   Delete My Account
                 </Button>
@@ -260,7 +271,7 @@ export default function TeamPage() {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    disabled={confirmText !== "DELETE MY ACCOUNT" || deleteMutation.isPending}
+                    disabled={confirmText !== "DELETE MY ACCOUNT" || deleteMutation.isPending || !canDeleteOwnAccount}
                     onClick={() => deleteMutation.mutate()}
                   >
                     {deleteMutation.isPending ? "Deleting..." : "Delete Account"}

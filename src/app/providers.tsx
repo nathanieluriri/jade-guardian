@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children, initialTheme }: { children: React.ReactNode; initialTheme: "light" | "dark" }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -21,11 +22,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        {children}
-      </TooltipProvider>
+      <ThemeProvider initialTheme={initialTheme}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          {children}
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

@@ -1,8 +1,22 @@
 import { apiRequest } from "@/lib/api/client";
 import type {
+  AdminAutocompleteUser,
+  AdminCreateCustomerPlaceRequest,
+  AdminCustomerPlaceOut,
+  AdminElevationRequestStatus,
+  AdminPermissionGroup,
+  AdminPermissionGroupsResponse,
   AdminProfile,
+  AdminResourceItem,
+  AdminResourcePayload,
+  ConciergeBookingCreateRequest,
+  ConciergeBookingCreateResult,
+  DecideElevationRequestPayload,
+  DecideElevationResponse,
   AdminLoginResponse,
   AlertSlaMetrics,
+  PlaceDetailsOut,
+  PlacesAutocompleteItem,
   AuditEvent,
   AuditExportCreateRequest,
   AuditExportJob,
@@ -14,6 +28,7 @@ import type {
   CustomerListItem,
   CreateAdminRequest,
   DeniedPermissionItem,
+  ElevationRequestItem,
   MonitoringAlert,
   MonitoringOverview,
   PermissionCatalogResponse,
@@ -21,10 +36,125 @@ import type {
   RoleTemplatePreviewResult,
   RoleTemplateRolloutImpact,
   SessionRevokeResponse,
+  SubmitElevationRequestPayload,
   SessionAnomalies,
   SignupTrendPoint,
   UsersSummaryReport,
 } from "@/lib/api/types";
+
+function normalizePermissionEntry(input: unknown): RoleTemplate["permissionList"]["permissions"][number] | null {
+  if (!input || typeof input !== "object") return null;
+
+  const item = input as {
+    name?: unknown;
+    key?: unknown;
+    methods?: unknown;
+    path?: unknown;
+    description?: unknown;
+  };
+
+  const key = typeof item.key === "string" ? item.key : "";
+  const methods =
+    Array.isArray(item.methods) && item.methods.every((m) => typeof m === "string")
+      ? (item.methods as string[])
+      : [];
+  const path = typeof item.path === "string" ? item.path : "";
+  const name = typeof item.name === "string" ? item.name : key || path || "permission";
+  const description = typeof item.description === "string" ? item.description : undefined;
+
+  if (!key && (!methods.length || !path)) return null;
+
+  return {
+    name,
+    key: key || `${methods[0] || "GET"}:${path}`,
+    methods: methods.length ? methods : [key.split(":")[0] || "GET"],
+    path: path || key.split(":").slice(1).join(":") || "/",
+    description,
+  };
+}
+
+function normalizeRoleTemplateResponse(role: "cleaner" | "customer", raw: unknown): RoleTemplate {
+  const data = (raw && typeof raw === "object" ? raw : {}) as {
+    role?: unknown;
+    source?: unknown;
+    permissionList?: unknown;
+    permission_list?: unknown;
+    permissions?: unknown;
+  };
+
+  const candidatePermissions =
+    (data.permissionList &&
+    typeof data.permissionList === "object" &&
+    Array.isArray((data.permissionList as { permissions?: unknown }).permissions)
+      ? (data.permissionList as { permissions: unknown[] }).permissions
+      : null) ||
+    (data.permission_list &&
+    typeof data.permission_list === "object" &&
+    Array.isArray((data.permission_list as { permissions?: unknown }).permissions)
+      ? (data.permission_list as { permissions: unknown[] }).permissions
+      : null) ||
+    (Array.isArray(data.permissionList) ? data.permissionList : null) ||
+    (Array.isArray(data.permissions) ? data.permissions : null) ||
+    [];
+
+  const permissions = candidatePermissions
+    .map((item) => normalizePermissionEntry(item))
+    .filter((item): item is RoleTemplate["permissionList"]["permissions"][number] => item !== null);
+
+  return {
+    role: data.role === "cleaner" || data.role === "customer" ? data.role : role,
+    source: typeof data.source === "string" ? data.source : undefined,
+    permissionList: {
+      permissions,
+    },
+  };
+}
+
+function normalizePermissionCatalogResponse(raw: unknown): PermissionCatalogResponse {
+  const data = (raw && typeof raw === "object" ? raw : {}) as PermissionCatalogResponse & {
+    groups?: PermissionCatalogResponse["grouped"];
+    grouped_permissions?: PermissionCatalogResponse["grouped"];
+  };
+
+  const groupedCandidate = data.grouped || data.groups || data.grouped_permissions || [];
+  const grouped = Array.isArray(groupedCandidate)
+    ? groupedCandidate.filter((group) => group && typeof group === "object")
+    : [];
+
+  const flatPermissionsCandidate =
+    data.flat && typeof data.flat === "object" && Array.isArray(data.flat.permissions) ? data.flat.permissions : [];
+  const flatPermissions = flatPermissionsCandidate.filter((permission) => permission && typeof permission === "object");
+
+  return {
+    grouped,
+    flat: { permissions: flatPermissions },
+  };
+}
+
+function normalizeAdminResourceListResponse(raw: unknown): AdminResourceItem[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is AdminResourceItem => !!item && typeof item === "object");
+  }
+  if (!raw || typeof raw !== "object") return [];
+  const envelope = raw as { items?: unknown; data?: unknown };
+  if (Array.isArray(envelope.items)) {
+    return envelope.items.filter((item): item is AdminResourceItem => !!item && typeof item === "object");
+  }
+  if (Array.isArray(envelope.data)) {
+    return envelope.data.filter((item): item is AdminResourceItem => !!item && typeof item === "object");
+  }
+  return [];
+}
+
+function normalizeAdminAutocompleteUsers(input: unknown): AdminAutocompleteUser[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is AdminAutocompleteUser => !!item && typeof item === "object");
+}
+
+function normalizePlaces(input: unknown): PlacesAutocompleteItem[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is PlacesAutocompleteItem => !!item && typeof item === "object");
+}
 
 export async function loginAdmin(email: string, password: string) {
   const response = await apiRequest<AdminLoginResponse>("/v1/admins/login", {
@@ -37,6 +167,69 @@ export async function loginAdmin(email: string, password: string) {
 
 export async function fetchAdminProfile() {
   const response = await apiRequest<AdminProfile>("/v1/admins/profile");
+  return response.data;
+}
+
+export async function fetchPermissionGroups() {
+  const response = await apiRequest<
+    AdminPermissionGroup[] | { items?: AdminPermissionGroup[] } | AdminPermissionGroupsResponse
+  >(
+    "/v1/admins/access/permission-groups"
+  );
+  if (Array.isArray(response.data)) return response.data;
+  if ("builtIn" in response.data || "custom" in response.data) {
+    const builtIn = response.data.builtIn || [];
+    const custom = response.data.custom || [];
+    return [...builtIn, ...custom];
+  }
+  if ("items" in response.data) {
+    return response.data.items || [];
+  }
+  return [];
+}
+
+export async function createPermissionGroup(payload: {
+  name: string;
+  description?: string;
+  permissions: string[];
+}) {
+  const response = await apiRequest<AdminPermissionGroup>("/v1/admins/access/permission-groups", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function submitElevationRequest(payload: SubmitElevationRequestPayload) {
+  return apiRequest("/v1/admins/access/request-elevation", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchElevationRequestStatus() {
+  const response = await apiRequest<AdminElevationRequestStatus>("/v1/admins/access/request-elevation/status");
+  return response.data;
+}
+
+export async function listElevationRequests(params: {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  start?: number;
+  stop?: number;
+} = {}) {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  search.set("start", String(params.start ?? 0));
+  search.set("stop", String(params.stop ?? 50));
+  const response = await apiRequest<ElevationRequestItem[]>(`/v1/admins/access/requests?${search.toString()}`);
+  return response.data || [];
+}
+
+export async function decideElevationRequest(requestId: string, payload: DecideElevationRequestPayload) {
+  const response = await apiRequest<DecideElevationResponse>(`/v1/admins/access/requests/${requestId}/decision`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
   return response.data;
 }
 
@@ -115,12 +308,12 @@ export async function fetchDeniedPermissions(hours = 24, limit = 10) {
 
 export async function fetchPermissionCatalog() {
   const response = await apiRequest<PermissionCatalogResponse>("/v1/admins/permissions/catalog");
-  return response.data;
+  return normalizePermissionCatalogResponse(response.data);
 }
 
 export async function fetchRoleTemplate(role: "cleaner" | "customer") {
-  const response = await apiRequest<RoleTemplate>(`/v1/admins/permission-templates/${role}`);
-  return response.data;
+  const response = await apiRequest<RoleTemplate | Record<string, unknown>>(`/v1/admins/permission-templates/${role}`);
+  return normalizeRoleTemplateResponse(role, response.data);
 }
 
 export async function updateRoleTemplate(role: "cleaner" | "customer", permissions: RoleTemplate["permissionList"]) {
@@ -270,6 +463,66 @@ export async function fetchCustomerById(customerId: string) {
   return response.data;
 }
 
+export async function autocompleteAdminUsers(query: string, limit = 10) {
+  const search = new URLSearchParams();
+  search.set("q", query);
+  search.set("limit", String(limit));
+  const response = await apiRequest<{ customers?: unknown; cleaners?: unknown }>(
+    `/v1/admins/users/autocomplete?${search.toString()}`
+  );
+  return {
+    customers: normalizeAdminAutocompleteUsers(response.data?.customers),
+    cleaners: normalizeAdminAutocompleteUsers(response.data?.cleaners),
+  };
+}
+
+export async function listAdminCustomerPlaces(customerId: string, start = 0, stop = 20) {
+  const search = new URLSearchParams();
+  search.set("start", String(start));
+  search.set("stop", String(stop));
+  const response = await apiRequest<AdminCustomerPlaceOut[]>(
+    `/v1/admins/customers/${customerId}/places?${search.toString()}`
+  );
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function createAdminCustomerPlace(customerId: string, payload: AdminCreateCustomerPlaceRequest) {
+  const response = await apiRequest<Record<string, unknown>>(`/v1/admins/customers/${customerId}/places`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function autocompletePlaces(query: string, limit = 10) {
+  const search = new URLSearchParams();
+  // Backend contract uses `input` for places autocomplete.
+  // Keep `q` as a compatibility mirror for older deployments.
+  search.set("input", query);
+  search.set("q", query);
+  search.set("limit", String(limit));
+  const response = await apiRequest<PlacesAutocompleteItem[] | { items?: PlacesAutocompleteItem[] }>(
+    `/v1/places/autocomplete?${search.toString()}`
+  );
+  if (Array.isArray(response.data)) return normalizePlaces(response.data);
+  return normalizePlaces(response.data?.items || []);
+}
+
+export async function getPlaceDetails(placeId: string) {
+  const search = new URLSearchParams();
+  search.set("place_id", placeId);
+  const response = await apiRequest<PlaceDetailsOut>(`/v1/places/details?${search.toString()}`);
+  return response.data;
+}
+
+export async function createConciergeBookingByAdmin(payload: ConciergeBookingCreateRequest) {
+  const response = await apiRequest<ConciergeBookingCreateResult>("/v1/admins/concierge-bookings/create-booking", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function fetchUsersSummaryReport() {
   const response = await apiRequest<UsersSummaryReport>("/v1/admins/reports/users/summary");
   return response.data;
@@ -281,4 +534,239 @@ export async function fetchUsersSignupTrend() {
   );
   if (Array.isArray(response.data)) return response.data;
   return response.data?.items || [];
+}
+
+async function listAdminResource(path: string, start = 0, stop = 100) {
+  const response = await apiRequest<AdminResourceItem[] | { items?: AdminResourceItem[] }>(
+    `${path}?start=${start}&stop=${stop}`
+  );
+  return normalizeAdminResourceListResponse(response.data);
+}
+
+async function createAdminResource(path: string, payload: AdminResourcePayload) {
+  const response = await apiRequest<AdminResourceItem>(path, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+async function updateAdminResource(path: string, payload: AdminResourcePayload) {
+  const response = await apiRequest<AdminResourceItem>(path, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+async function deleteAdminResource(path: string) {
+  return apiRequest(path, { method: "DELETE" });
+}
+
+export async function listServiceDefinitions(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/service-definitions/", start, stop);
+}
+
+export async function createServiceDefinition(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/service-definitions/", payload);
+}
+
+export async function updateServiceDefinition(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/service-definitions/${id}`, payload);
+}
+
+export async function deleteServiceDefinition(id: string) {
+  return deleteAdminResource(`/v1/admins/service-definitions/${id}`);
+}
+
+export async function listAddOns(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/add-ons/", start, stop);
+}
+
+export async function createAddOn(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/add-ons/", payload);
+}
+
+export async function updateAddOn(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/add-ons/${id}`, payload);
+}
+
+export async function deleteAddOn(id: string) {
+  return deleteAdminResource(`/v1/admins/add-ons/${id}`);
+}
+
+export async function listPricingRules(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/pricing-rules/", start, stop);
+}
+
+export async function createPricingRule(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/pricing-rules/", payload);
+}
+
+export async function updatePricingRule(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/pricing-rules/${id}`, payload);
+}
+
+export async function deletePricingRule(id: string) {
+  return deleteAdminResource(`/v1/admins/pricing-rules/${id}`);
+}
+
+export async function listServiceAreas(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/service-areas/", start, stop);
+}
+
+export async function createServiceArea(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/service-areas/", payload);
+}
+
+export async function updateServiceArea(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/service-areas/${id}`, payload);
+}
+
+export async function deleteServiceArea(id: string) {
+  return deleteAdminResource(`/v1/admins/service-areas/${id}`);
+}
+
+export async function listPromoCodes(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/promo-codes/", start, stop);
+}
+
+export async function createPromoCode(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/promo-codes/", payload);
+}
+
+export async function updatePromoCode(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/promo-codes/${id}`, payload);
+}
+
+export async function deletePromoCode(id: string) {
+  return deleteAdminResource(`/v1/admins/promo-codes/${id}`);
+}
+
+export async function listConciergeBookings(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/concierge-bookings/", start, stop);
+}
+
+export async function createConciergeBooking(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/concierge-bookings/", payload);
+}
+
+export async function updateConciergeBooking(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/concierge-bookings/${id}`, payload);
+}
+
+export async function deleteConciergeBooking(id: string) {
+  return deleteAdminResource(`/v1/admins/concierge-bookings/${id}`);
+}
+
+export async function listChatInterventions(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/chat-interventions/", start, stop);
+}
+
+export async function createChatIntervention(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/chat-interventions/", payload);
+}
+
+export async function updateChatIntervention(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/chat-interventions/${id}`, payload);
+}
+
+export async function deleteChatIntervention(id: string) {
+  return deleteAdminResource(`/v1/admins/chat-interventions/${id}`);
+}
+
+export async function listClaimReviews(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/claim-reviews/", start, stop);
+}
+
+export async function createClaimReview(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/claim-reviews/", payload);
+}
+
+export async function updateClaimReview(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/claim-reviews/${id}`, payload);
+}
+
+export async function deleteClaimReview(id: string) {
+  return deleteAdminResource(`/v1/admins/claim-reviews/${id}`);
+}
+
+export async function listServiceCredits(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/service-credits/", start, stop);
+}
+
+export async function createServiceCredit(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/service-credits/", payload);
+}
+
+export async function updateServiceCredit(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/service-credits/${id}`, payload);
+}
+
+export async function deleteServiceCredit(id: string) {
+  return deleteAdminResource(`/v1/admins/service-credits/${id}`);
+}
+
+export async function listPayoutAdjustments(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/payout-adjustments/", start, stop);
+}
+
+export async function createPayoutAdjustment(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/payout-adjustments/", payload);
+}
+
+export async function updatePayoutAdjustment(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/payout-adjustments/${id}`, payload);
+}
+
+export async function deletePayoutAdjustment(id: string) {
+  return deleteAdminResource(`/v1/admins/payout-adjustments/${id}`);
+}
+
+export async function listBroadcasts(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/broadcasts/", start, stop);
+}
+
+export async function createBroadcast(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/broadcasts/", payload);
+}
+
+export async function updateBroadcast(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/broadcasts/${id}`, payload);
+}
+
+export async function deleteBroadcast(id: string) {
+  return deleteAdminResource(`/v1/admins/broadcasts/${id}`);
+}
+
+export async function listCleanerTags(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/cleaner-tags/", start, stop);
+}
+
+export async function createCleanerTag(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/cleaner-tags/", payload);
+}
+
+export async function updateCleanerTag(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/cleaner-tags/${id}`, payload);
+}
+
+export async function deleteCleanerTag(id: string) {
+  return deleteAdminResource(`/v1/admins/cleaner-tags/${id}`);
+}
+
+export async function listAvailabilityOverrides(start = 0, stop = 100) {
+  return listAdminResource("/v1/admins/availability-overrides/", start, stop);
+}
+
+export async function createAvailabilityOverride(payload: AdminResourcePayload) {
+  return createAdminResource("/v1/admins/availability-overrides/", payload);
+}
+
+export async function updateAvailabilityOverride(id: string, payload: AdminResourcePayload) {
+  return updateAdminResource(`/v1/admins/availability-overrides/${id}`, payload);
+}
+
+export async function deleteAvailabilityOverride(id: string) {
+  return deleteAdminResource(`/v1/admins/availability-overrides/${id}`);
 }

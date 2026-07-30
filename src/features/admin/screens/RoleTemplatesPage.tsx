@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Zap, CopyCheck, ScanSearch } from "lucide-react";
@@ -39,6 +39,9 @@ import {
   updateRoleTemplate,
 } from "@/lib/api/admin-api";
 import type { Permission, RoleTemplatePreviewResult, RoleTemplateRolloutImpact } from "@/lib/api/types";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
+import { useAdminProfile } from "@/hooks/use-admin-auth";
+import { canAccessAdminAction } from "@/lib/admin-access";
 
 function diffPermissions(current: Permission[], initial: Permission[]) {
   const currentSet = new Set(current.map((item) => item.key));
@@ -71,6 +74,24 @@ const BASELINE_RULES: Record<"cleaner" | "customer", string[]> = {
   customer: ["GET:/customers/me", "PATCH:/customers/me", "POST:/settings/sessions/logout"],
 };
 
+function normalizePermissions(input: unknown): Permission[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const permission = item as Partial<Permission>;
+      if (!permission.key || !permission.path) return null;
+      return {
+        name: permission.name || permission.key,
+        key: permission.key,
+        methods: Array.isArray(permission.methods) ? permission.methods.filter(Boolean) : [],
+        path: permission.path,
+        description: permission.description,
+      } as Permission;
+    })
+    .filter((item): item is Permission => item !== null);
+}
+
 function AddFromCatalogDialog({
   role,
   currentPermissions,
@@ -87,9 +108,9 @@ function AddFromCatalogDialog({
   const existingKeys = useMemo(() => new Set(currentPermissions.map((item) => item.key)), [currentPermissions]);
   const searchQuery = search.trim().toLowerCase();
   const routes = useMemo(() => {
-    const groups = catalogQuery.data?.grouped || [];
+    const groups = Array.isArray(catalogQuery.data?.grouped) ? catalogQuery.data.grouped : [];
     return groups.flatMap((group) =>
-      group.routes
+      (Array.isArray(group?.routes) ? group.routes : [])
         .filter((route) => {
           if (!searchQuery) return true;
           const haystack = `${route.resource} ${route.method} ${route.path} ${route.key} ${route.summary || ""}`.toLowerCase();
@@ -227,6 +248,9 @@ function TemplateSection({
   previewing,
   preview,
   impact,
+  canSave,
+  canPreview,
+  canRollout,
 }: {
   role: "cleaner" | "customer";
   source: string;
@@ -242,14 +266,17 @@ function TemplateSection({
   previewing: boolean;
   preview: RoleTemplatePreviewResult | null;
   impact: RoleTemplateRolloutImpact | null;
+  canSave: boolean;
+  canPreview: boolean;
+  canRollout: boolean;
 }) {
   const [rolloutPhrase, setRolloutPhrase] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const isProduction = process.env.NODE_ENV === "production";
   const confirmationPhrase = `ROLLOUT ${role.toUpperCase()}`;
 
-  const removePermission = (key: string) => {
-    onUpdate(permissions.filter((p) => p.key !== key));
+  const removePermission = (index: number) => {
+    onUpdate(permissions.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const addPermission = (perm: Permission) => {
@@ -259,7 +286,7 @@ function TemplateSection({
   const { added, removed } = diffPermissions(permissions, initialPermissions);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="surface-card">
+    <div className="surface-card">
       <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-[15px] font-semibold capitalize">{role} Template</h3>
@@ -305,17 +332,17 @@ function TemplateSection({
               onPreview();
               setPreviewOpen(true);
             }}
-            disabled={previewing}
+            disabled={previewing || !canPreview}
           >
             <ScanSearch className="h-3.5 w-3.5 mr-1.5" />
             {previewing ? "Previewing..." : "Preview"}
           </Button>
-          <Button size="sm" variant="default" className="gap-1.5" onClick={onSave} disabled={saving || warnings.length > 0}>
+          <Button size="sm" variant="default" className="gap-1.5" onClick={onSave} disabled={saving || warnings.length > 0 || !canSave}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="default" className="gap-1.5" disabled={rollingOut}>
+              <Button size="sm" variant="default" className="gap-1.5" disabled={rollingOut || !canRollout}>
                 <Zap className="h-3.5 w-3.5" />
                 {rollingOut ? "Rolling out..." : "Rollout"}
               </Button>
@@ -335,7 +362,7 @@ function TemplateSection({
               )}
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={onRollout} disabled={isProduction ? rolloutPhrase !== confirmationPhrase : false}>
+                <AlertDialogAction onClick={onRollout} disabled={(isProduction ? rolloutPhrase !== confirmationPhrase : false) || !canRollout}>
                   Confirm Rollout
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -356,9 +383,9 @@ function TemplateSection({
       )}
 
       <div className="divide-y divide-border">
-        {permissions.map((perm) => (
+        {permissions.map((perm, index) => (
           <motion.div
-            key={`${perm.key}-${perm.path}`}
+            key={`${perm.key}-${perm.path}-${index}`}
             layout
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
@@ -376,7 +403,7 @@ function TemplateSection({
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => removePermission(perm.key)}
+                onClick={() => removePermission(index)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -386,19 +413,45 @@ function TemplateSection({
       </div>
 
       <PreviewDialog role={role} open={previewOpen} onOpenChange={setPreviewOpen} preview={preview} impact={impact} loading={previewing} />
-    </motion.div>
+    </div>
   );
 }
 
 export default function RoleTemplatesPage() {
   const queryClient = useQueryClient();
+  const profileQuery = useAdminProfile();
 
-  const cleanerQuery = useQuery({ queryKey: ["role-template", "cleaner"], queryFn: () => fetchRoleTemplate("cleaner") });
-  const customerQuery = useQuery({ queryKey: ["role-template", "customer"], queryFn: () => fetchRoleTemplate("customer") });
-  const catalogQuery = useQuery({ queryKey: ["permissions", "catalog"], queryFn: fetchPermissionCatalog });
+  const cleanerQuery = useQuery({
+    queryKey: ["role-template", "cleaner"],
+    queryFn: () => fetchRoleTemplate("cleaner"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const customerQuery = useQuery({
+    queryKey: ["role-template", "customer"],
+    queryFn: () => fetchRoleTemplate("customer"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const catalogQuery = useQuery({
+    queryKey: ["permissions", "catalog"],
+    queryFn: fetchPermissionCatalog,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
 
-  const cleanerImpactQuery = useQuery({ queryKey: ["role-rollout-impact", "cleaner"], queryFn: () => getRoleRolloutImpact("cleaner") });
-  const customerImpactQuery = useQuery({ queryKey: ["role-rollout-impact", "customer"], queryFn: () => getRoleRolloutImpact("customer") });
+  const cleanerImpactQuery = useQuery({
+    queryKey: ["role-rollout-impact", "cleaner"],
+    queryFn: () => getRoleRolloutImpact("cleaner"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+  const customerImpactQuery = useQuery({
+    queryKey: ["role-rollout-impact", "customer"],
+    queryFn: () => getRoleRolloutImpact("customer"),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
 
   const [cleanerPerms, setCleanerPerms] = useState<Permission[]>([]);
   const [customerPerms, setCustomerPerms] = useState<Permission[]>([]);
@@ -406,23 +459,43 @@ export default function RoleTemplatesPage() {
   const [initialCustomerPerms, setInitialCustomerPerms] = useState<Permission[]>([]);
   const [cleanerPreview, setCleanerPreview] = useState<RoleTemplatePreviewResult | null>(null);
   const [customerPreview, setCustomerPreview] = useState<RoleTemplatePreviewResult | null>(null);
+  const hasInitializedCleanerRef = useRef(false);
+  const hasInitializedCustomerRef = useRef(false);
+  const [cleanerDirty, setCleanerDirty] = useState(false);
+  const [customerDirty, setCustomerDirty] = useState(false);
 
   useEffect(() => {
-    if (cleanerQuery.data?.permissionList?.permissions) {
-      setCleanerPerms(cleanerQuery.data.permissionList.permissions);
-      setInitialCleanerPerms(cleanerQuery.data.permissionList.permissions);
-    }
-  }, [cleanerQuery.data]);
+    if (!cleanerQuery.data) return;
+    if (hasInitializedCleanerRef.current && cleanerDirty) return;
+    const nextPermissions = normalizePermissions(cleanerQuery.data.permissionList?.permissions);
+    setCleanerPerms(nextPermissions);
+    setInitialCleanerPerms(nextPermissions);
+    hasInitializedCleanerRef.current = true;
+    setCleanerDirty(false);
+  }, [cleanerDirty, cleanerQuery.data]);
 
   useEffect(() => {
-    if (customerQuery.data?.permissionList?.permissions) {
-      setCustomerPerms(customerQuery.data.permissionList.permissions);
-      setInitialCustomerPerms(customerQuery.data.permissionList.permissions);
-    }
-  }, [customerQuery.data]);
+    if (!customerQuery.data) return;
+    if (hasInitializedCustomerRef.current && customerDirty) return;
+    const nextPermissions = normalizePermissions(customerQuery.data.permissionList?.permissions);
+    setCustomerPerms(nextPermissions);
+    setInitialCustomerPerms(nextPermissions);
+    hasInitializedCustomerRef.current = true;
+    setCustomerDirty(false);
+  }, [customerDirty, customerQuery.data]);
+
+  const handleCleanerUpdate = (nextPermissions: Permission[]) => {
+    setCleanerPerms(nextPermissions);
+    setCleanerDirty(true);
+  };
+
+  const handleCustomerUpdate = (nextPermissions: Permission[]) => {
+    setCustomerPerms(nextPermissions);
+    setCustomerDirty(true);
+  };
 
   const catalogKeys = useMemo(() => {
-    const flat = catalogQuery.data?.flat?.permissions || [];
+    const flat = Array.isArray(catalogQuery.data?.flat?.permissions) ? catalogQuery.data.flat.permissions : [];
     return new Set(flat.map((item) => item.key).filter(Boolean) as string[]);
   }, [catalogQuery.data?.flat?.permissions]);
 
@@ -435,6 +508,13 @@ export default function RoleTemplatesPage() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["role-template", variables.role] });
       queryClient.invalidateQueries({ queryKey: ["role-rollout-impact", variables.role] });
+      if (variables.role === "cleaner") {
+        setInitialCleanerPerms(variables.permissions);
+        setCleanerDirty(false);
+      } else {
+        setInitialCustomerPerms(variables.permissions);
+        setCustomerDirty(false);
+      }
       toast.success(`${variables.role} template saved.`);
     },
     onError: () => toast.error("Failed to save template."),
@@ -466,14 +546,20 @@ export default function RoleTemplatesPage() {
 
   const cleanerSource = useMemo(() => cleanerQuery.data?.source || "template", [cleanerQuery.data]);
   const customerSource = useMemo(() => customerQuery.data?.source || "default", [customerQuery.data]);
+  const canSaveCleaner = canAccessAdminAction({ method: "PUT", path: "/v1/admins/permission-templates/cleaner" }, profileQuery.data);
+  const canSaveCustomer = canAccessAdminAction({ method: "PUT", path: "/v1/admins/permission-templates/customer" }, profileQuery.data);
+  const canPreviewCleaner = canAccessAdminAction({ method: "POST", path: "/v1/admins/permission-templates/cleaner/preview" }, profileQuery.data);
+  const canPreviewCustomer = canAccessAdminAction({ method: "POST", path: "/v1/admins/permission-templates/customer/preview" }, profileQuery.data);
+  const canRolloutCleaner = canAccessAdminAction({ method: "POST", path: "/v1/admins/permission-templates/cleaner/rollout" }, profileQuery.data);
+  const canRolloutCustomer = canAccessAdminAction({ method: "POST", path: "/v1/admins/permission-templates/customer/rollout" }, profileQuery.data);
 
   return (
     <div className="space-y-6 max-w-[1080px]">
-      <motion.h1 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-semibold tracking-tighter">
+      <h1 className="text-2xl font-semibold tracking-tighter">
         Role Permission Templates
-      </motion.h1>
+      </h1>
 
-      {loading && <p className="font-mono-data text-muted-foreground">Loading role templates...</p>}
+      {loading && <AdminLoadingState label="Loading role templates..." />}
       {hasError && <p className="font-mono-data text-destructive">Failed to load role templates.</p>}
 
       {!loading && !hasError && (
@@ -483,7 +569,7 @@ export default function RoleTemplatesPage() {
             source={cleanerSource}
             permissions={cleanerPerms}
             initialPermissions={initialCleanerPerms}
-            onUpdate={setCleanerPerms}
+            onUpdate={handleCleanerUpdate}
             onSave={() => saveMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
             onPreview={() => previewMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
             onRollout={() => rolloutMutation.mutate("cleaner")}
@@ -493,13 +579,16 @@ export default function RoleTemplatesPage() {
             rollingOut={rolloutMutation.isPending}
             preview={cleanerPreview}
             impact={cleanerImpactQuery.data || null}
+            canSave={canSaveCleaner}
+            canPreview={canPreviewCleaner}
+            canRollout={canRolloutCleaner}
           />
           <TemplateSection
             role="customer"
             source={customerSource}
             permissions={customerPerms}
             initialPermissions={initialCustomerPerms}
-            onUpdate={setCustomerPerms}
+            onUpdate={handleCustomerUpdate}
             onSave={() => saveMutation.mutate({ role: "customer", permissions: customerPerms })}
             onPreview={() => previewMutation.mutate({ role: "customer", permissions: customerPerms })}
             onRollout={() => rolloutMutation.mutate("customer")}
@@ -509,6 +598,9 @@ export default function RoleTemplatesPage() {
             rollingOut={rolloutMutation.isPending}
             preview={customerPreview}
             impact={customerImpactQuery.data || null}
+            canSave={canSaveCustomer}
+            canPreview={canPreviewCustomer}
+            canRollout={canRolloutCustomer}
           />
         </>
       )}

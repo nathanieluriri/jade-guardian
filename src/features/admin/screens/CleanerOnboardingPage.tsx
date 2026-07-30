@@ -8,6 +8,7 @@ import { fetchCleanerById, listOnboardingQueue, reviewCleanerOnboarding } from "
 import { OnboardingQueue } from "@/components/OnboardingQueue";
 import { OnboardingDetail } from "@/components/OnboardingDetail";
 import { computeOnboardingStats, mapCleanerToOnboarding, type CleanerOnboarding } from "@/lib/onboarding";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
 
 function resolveCleanerId(input: { id?: string; _id?: string }): string {
   return input.id || input._id || "";
@@ -169,7 +170,7 @@ export default function CleanerOnboardingPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
         <div className="space-y-3">
-          {cleanersQuery.isLoading && <p className="font-mono-data text-muted-foreground">Loading onboarding queue...</p>}
+          {cleanersQuery.isLoading && <AdminLoadingState label="Loading onboarding queue..." />}
           {cleanersQuery.isError && <p className="font-mono-data text-destructive">Failed to load onboarding queue.</p>}
           {!cleanersQuery.isLoading && !cleanersQuery.isError && (
             <OnboardingQueue cleaners={normalizedCleaners} stats={stats} onSelect={(cleaner) => setSelectedCleanerId(cleaner.id)} />

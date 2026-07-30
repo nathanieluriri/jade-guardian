@@ -19,6 +19,7 @@ import {
   updateAlertReadState,
 } from "@/lib/api/admin-api";
 import { metricTooltips } from "@/lib/admin-ui";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
 
 const stagger = {
   hidden: {},
@@ -142,7 +143,7 @@ export default function OverviewPage() {
   }, [recentAlerts]);
 
   if (overviewQuery.isLoading) {
-    return <p className="font-mono-data text-muted-foreground">Loading system overview...</p>;
+    return <AdminLoadingState label="Loading system overview..." />;
   }
 
   if (overviewQuery.isError || !ov) {

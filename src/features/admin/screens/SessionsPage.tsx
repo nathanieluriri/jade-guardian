@@ -29,6 +29,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
+import { useAdminProfile } from "@/hooks/use-admin-auth";
+import { canAccessAdminAction } from "@/lib/admin-access";
 
 const stagger = {
   hidden: {},
@@ -42,9 +45,13 @@ const fadeUp = {
 
 export default function SessionsPage() {
   const router = useRouter();
+  const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
   const [confirmText, setConfirmText] = useState("");
   const sessionsQuery = useQuery({ queryKey: ["session-anomalies"], queryFn: fetchSessionAnomalies });
+  const canRevokeCurrent = canAccessAdminAction({ method: "POST", path: "/v1/admins/sessions/logout" }, profileQuery.data);
+  const canRevokeOthers = canAccessAdminAction({ method: "POST", path: "/v1/admins/sessions/revoke-others" }, profileQuery.data);
+  const canRevokeAll = canAccessAdminAction({ method: "POST", path: "/v1/admins/sessions/revoke-all" }, profileQuery.data);
 
   const revokeCurrentMutation = useMutation({
     mutationFn: revokeCurrentSession,
@@ -80,7 +87,7 @@ export default function SessionsPage() {
   }, [sessionsQuery.data]);
 
   if (sessionsQuery.isLoading) {
-    return <p className="font-mono-data text-muted-foreground">Loading session anomalies...</p>;
+    return <AdminLoadingState label="Loading session anomalies..." />;
   }
 
   if (sessionsQuery.isError || !sessionsQuery.data) {
@@ -133,7 +140,7 @@ export default function SessionsPage() {
       <div className="flex flex-wrap gap-3">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm">Revoke Current Session</Button>
+            <Button variant="outline" size="sm" disabled={!canRevokeCurrent}>Revoke Current Session</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -144,7 +151,7 @@ export default function SessionsPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeCurrentMutation.mutate()}>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeCurrentMutation.mutate()} disabled={!canRevokeCurrent}>
                 Revoke
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -153,7 +160,7 @@ export default function SessionsPage() {
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm">Revoke Other Sessions</Button>
+            <Button variant="outline" size="sm" disabled={!canRevokeOthers}>Revoke Other Sessions</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -164,7 +171,7 @@ export default function SessionsPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeOthersMutation.mutate()}>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => revokeOthersMutation.mutate()} disabled={!canRevokeOthers}>
                 Revoke Others
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -173,7 +180,7 @@ export default function SessionsPage() {
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="sm">Revoke All Sessions</Button>
+            <Button variant="destructive" size="sm" disabled={!canRevokeAll}>Revoke All Sessions</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -190,7 +197,7 @@ export default function SessionsPage() {
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={confirmText !== "REVOKE ALL" || revokeAllMutation.isPending}
+                disabled={confirmText !== "REVOKE ALL" || revokeAllMutation.isPending || !canRevokeAll}
                 onClick={() => revokeAllMutation.mutate()}
               >
                 {revokeAllMutation.isPending ? "Revoking..." : "Revoke All"}

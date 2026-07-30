@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getAuthState } from "@/lib/api/auth-storage";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
+import { canAccessAdminRoute, resolveFirstAllowedAdminRoute } from "@/lib/admin-access";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
 
 export function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const auth = getAuthState();
   const profileQuery = useAdminProfile();
 
@@ -18,15 +21,20 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
 
     if (profileQuery.isError) {
       router.replace("/admin/login");
+      return;
     }
-  }, [auth?.accessToken, profileQuery.isError, router]);
+
+    if (profileQuery.data && pathname && !canAccessAdminRoute(pathname, profileQuery.data)) {
+      router.replace(resolveFirstAllowedAdminRoute(profileQuery.data));
+    }
+  }, [auth?.accessToken, pathname, profileQuery.data, profileQuery.isError, router]);
 
   if (!auth?.accessToken || profileQuery.isLoading) {
-    return (
-      <div className="min-h-screen grid place-items-center">
-        <p className="font-mono-data text-muted-foreground">Loading admin session...</p>
-      </div>
-    );
+    return <AdminLoadingState label="Loading admin session..." />;
+  }
+
+  if (profileQuery.data && pathname && !canAccessAdminRoute(pathname, profileQuery.data)) {
+    return <AdminLoadingState label="Redirecting to available admin access..." />;
   }
 
   return <>{children}</>;

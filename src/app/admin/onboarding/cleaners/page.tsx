@@ -1,7 +1,5 @@
-"use client";
-
-import CleanerOnboardingPage from "@/features/admin/screens/CleanerOnboardingPage";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <CleanerOnboardingPage />;
+  redirect("/admin/institutions/employees");
 }
