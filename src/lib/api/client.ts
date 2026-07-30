@@ -1,3 +1,4 @@
+import { isSessionExpiredError } from "@/lib/api/auth-errors";
 import { clearAuthHint } from "@/lib/api/auth-storage";
 import type { ApiEnvelope, ApiError } from "@/lib/api/types";
 
@@ -94,16 +95,27 @@ export async function apiRequest<T>(
     credentials: "include",
   });
 
-  if ((response.status === 401 || response.status === 403) && auth && retryOnUnauthorized) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
-      return apiRequest<T>(path, init, { auth, retryOnUnauthorized: false });
-    }
-  }
-
   if (!response.ok) {
+    // Parsed *before* the refresh decision on purpose: only the error code can
+    // tell an expired session apart from a domain 401 (wrong password, wrong
+    // OTP, wrong authenticator/backup code), and rotating the session fixes
+    // exactly one of those.
     const error = await parseError(response);
-    if (auth && (error.status === 401 || error.code === "AUTH_ROLE_MISMATCH")) {
+
+    // 403 is not in this condition: neither `FORBIDDEN` nor
+    // `PASSWORD_CHANGE_REQUIRED` is fixable by a refresh, so retrying only
+    // doubled every forbidden request while rotating a refresh token whose
+    // reuse detection may already have tripped.
+    if (auth && retryOnUnauthorized && isSessionExpiredError(error)) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        return apiRequest<T>(path, init, { auth, retryOnUnauthorized: false });
+      }
+    }
+
+    // `AUTH_ROLE_MISMATCH` stays here regardless of status: a non-admin token
+    // on an admin route is a dead end for this console whatever the status.
+    if (auth && (isSessionExpiredError(error) || error.code === "AUTH_ROLE_MISMATCH")) {
       clearAuthHint();
     }
     throw error;

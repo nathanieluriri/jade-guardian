@@ -16,6 +16,15 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = ResizeObserverStub;
 }
 
+/**
+ * jsdom implements no layout, so `Element.prototype.scrollIntoView` is missing
+ * entirely. `cmdk` (the ⌘K palette) calls it in a layout effect to keep the
+ * selected item visible, which throws the moment the dialog mounts.
+ */
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = function scrollIntoViewStub(): void {};
+}
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({

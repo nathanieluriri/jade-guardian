@@ -79,4 +79,105 @@ describe("apiRequest", () => {
     await expect(apiRequest("/v1/admins/profile")).rejects.toMatchObject({ status: 401 });
     expect(hasAuthHint()).toBe(false);
   });
+
+  /**
+   * Regression: ADMIN_AUTH.md answers a wrong password and a wrong OTP/TOTP
+   * code with 401 too. Reading those as session expiry cleared the hint and
+   * signed the admin out on a single typo — and refreshed-and-replayed the
+   * request first, recording a second failed attempt server-side.
+   */
+  describe.each([
+    "INVALID_CREDENTIALS",
+    "TOTP_INVALID",
+    "OTP_INVALID",
+    "OTP_EXPIRED",
+    "OTP_LOCKED",
+    "TEMP_PASSWORD_EXPIRED",
+  ])("a 401 carrying the domain code %s", (code) => {
+    it("keeps the auth hint, never refreshes and makes exactly one request", async () => {
+      setAuthHint();
+
+      const fetchMock = getFetchMock();
+      // Nothing is queued for the refresh route: a second call would resolve to
+      // `undefined` and throw, which is the loudest possible failure here.
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ success: false, message: "nope", data: { code, details: null }, requestId: "req_test" }, 401)
+      );
+
+      await expect(apiRequest("/v1/admins/2fa/verify", { method: "POST" })).rejects.toMatchObject({
+        status: 401,
+        code,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(hasAuthHint()).toBe(true);
+    });
+  });
+
+  it("still clears the hint for a bare 401 that carries no domain code", async () => {
+    setAuthHint();
+
+    const fetchMock = getFetchMock();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ success: false, message: "unauthorized" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ success: false, message: "unauthorized" }, 401));
+
+    await expect(apiRequest("/v1/admins/profile")).rejects.toMatchObject({ status: 401 });
+
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/admins/refresh");
+    expect(hasAuthHint()).toBe(false);
+  });
+
+  /**
+   * Regression: 403 used to sit in the retry condition, so every forbidden
+   * request was doubled and a failed refresh (a reuse-detected rotation) then
+   * logged the admin out — contradicting "on 403 FORBIDDEN do NOT log out".
+   */
+  it("does not refresh, replay or clear the hint on a 403", async () => {
+    setAuthHint();
+
+    const fetchMock = getFetchMock();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: false, message: "forbidden", data: { code: "FORBIDDEN", details: null } }, 403)
+    );
+
+    await expect(apiRequest("/v1/admins/team")).rejects.toMatchObject({ status: 403, code: "FORBIDDEN" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(hasAuthHint()).toBe(true);
+  });
+
+  it("does not refresh, replay or clear the hint on a 403 PASSWORD_CHANGE_REQUIRED", async () => {
+    setAuthHint();
+
+    const fetchMock = getFetchMock();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { success: false, message: "change your password", data: { code: "PASSWORD_CHANGE_REQUIRED", details: null } },
+        403
+      )
+    );
+
+    await expect(apiRequest("/v1/admins/profile")).rejects.toMatchObject({
+      status: 403,
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(hasAuthHint()).toBe(true);
+  });
+
+  it("still clears the hint on AUTH_ROLE_MISMATCH whatever the status", async () => {
+    setAuthHint();
+
+    const fetchMock = getFetchMock();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: false, message: "wrong role", data: { code: "AUTH_ROLE_MISMATCH", details: null } }, 403)
+    );
+
+    await expect(apiRequest("/v1/admins/profile")).rejects.toMatchObject({ code: "AUTH_ROLE_MISMATCH" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(hasAuthHint()).toBe(false);
+  });
 });

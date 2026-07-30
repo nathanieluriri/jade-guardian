@@ -28,6 +28,7 @@ vi.mock("@lottiefiles/dotlottie-react", () => ({
   DotLottieReact: () => <div data-testid="dotlottie" />,
 }));
 
+import AdminIndexPage from "@/app/admin/page";
 import { handleAdminQueryError } from "@/app/providers";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { hasAuthHint, setAuthHint } from "@/lib/api/auth-storage";
@@ -157,6 +158,38 @@ describe("handleAdminQueryError", () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  /**
+   * Regression: every one of these is a 401 per ADMIN_AUTH.md, and treating
+   * them as session expiry logged the admin out mid-flow — a mistyped temporary
+   * password on the forced invite journey, or one wrong authenticator/backup
+   * code in security settings (where the pending TOTP secret is already stored
+   * server-side, so a bounce forces enrollment to restart).
+   */
+  it.each([
+    "INVALID_CREDENTIALS",
+    "TOTP_INVALID",
+    "OTP_INVALID",
+    "OTP_EXPIRED",
+    "OTP_LOCKED",
+    "TEMP_PASSWORD_EXPIRED",
+  ])("leaves the hint intact and stays put on a 401 %s", (code) => {
+    setAuthHint();
+
+    handleAdminQueryError({ status: 401, code, message: "nope" }, { replace: mockReplace }, "/admin/settings/security");
+
+    expect(hasAuthHint()).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("treats an unrecognised 401 code as expiry so a dead session still ends the session", () => {
+    setAuthHint();
+
+    handleAdminQueryError({ status: 401, code: "AUTH_INVALID", message: "x" }, { replace: mockReplace }, "/admin/overview");
+
+    expect(hasAuthHint()).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith("/admin/login");
+  });
+
   it("does nothing for an unrelated server error", () => {
     setAuthHint();
 
@@ -284,6 +317,41 @@ describe("AdminAuthGate", () => {
 
     await screen.findByTestId("protected-content");
     expect(mockReplace).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("permission-denied")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Regression: `/admin` (the landing redirector) was in neither
+   * `ADMIN_ROUTE_REQUIREMENTS` nor `ALWAYS_ALLOWED_ADMIN_ROUTES`, so
+   * `canAccessAdminRoute("/admin")` was false and the gate rendered
+   * `PermissionDenied` over the page before it could redirect — every admin
+   * without a wildcard/super-admin profile dead-ended on the console's entry
+   * URL. The page itself renders no data, so it is always allowed.
+   */
+  it("lets a permission-limited profile through /admin and on to its first allowed route", async () => {
+    pathnameState.current = "/admin";
+    setAuthHint();
+    stubRoutes({
+      // support_only-style: real granted permissions, no `*` and no isSuperAdmin.
+      [PROFILE_URL]: [
+        {
+          body: profileBody({
+            accessPreset: "content_support",
+            permissionList: ["GET:/api/v1/faq", "GET:/api/v1/admins/broadcasts", "POST:/api/v1/admins/broadcasts"],
+          }),
+        },
+      ],
+    });
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <AdminAuthGate>
+          <AdminIndexPage />
+        </AdminAuthGate>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/admin/governance/broadcasts"));
     expect(screen.queryByTestId("permission-denied")).not.toBeInTheDocument();
   });
 

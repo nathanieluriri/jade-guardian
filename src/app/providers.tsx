@@ -9,6 +9,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { BrandedSplash } from "@/components/auth/branded-splash";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
+import { isSessionExpiredError } from "@/lib/api/auth-errors";
 import { clearAuthHint, hasAuthHint } from "@/lib/api/auth-storage";
 import type { ApiError } from "@/lib/api/types";
 
@@ -58,10 +59,15 @@ function isApiErrorLike(error: unknown): error is Partial<ApiError> {
  *    permission error into a strictly worse experience than just refusing the
  *    action — the screen (or `AdminAuthGate`'s route guard) is responsible for
  *    surfacing `PermissionDenied`.
- *  - A 401 that survives `apiRequest`'s own single-flight refresh: `client.ts`
- *    has already cleared the hint by the time this fires; this is what turns
- *    that into an actual navigation for every query/mutation, not just the
- *    profile query `AdminAuthGate` itself observes.
+ *  - A *session* 401 that survives `apiRequest`'s own single-flight refresh:
+ *    `client.ts` has already cleared the hint by the time this fires; this is
+ *    what turns that into an actual navigation for every query/mutation, not
+ *    just the profile query `AdminAuthGate` itself observes.
+ *  - A *domain* 401 (`isSessionExpiredError` says no): also a no-op, for the
+ *    same reason as 403. `INVALID_CREDENTIALS`, `TOTP_INVALID`,
+ *    `OTP_INVALID`/`OTP_EXPIRED` are all 401s per ADMIN_AUTH.md, and the screen
+ *    that made the request owns them — signing the admin out on a mistyped code
+ *    is a strictly worse outcome than the inline error the screen already shows.
  */
 export function handleAdminQueryError(
   error: unknown,
@@ -81,7 +87,7 @@ export function handleAdminQueryError(
     return;
   }
 
-  if (error.status === 401) {
+  if (isSessionExpiredError(error)) {
     clearAuthHint();
     if (currentPath !== "/admin/login") {
       router.replace("/admin/login");
@@ -142,10 +148,11 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
   const profileQuery = useAdminProfile();
   const profileSettled = profileQuery.isSuccess || profileQuery.isError;
 
-  // The hint lives in localStorage, so the first render has to match the
-  // server's (children). Taking the decision in a layout effect flips to the
-  // splash before the browser paints — hydration-safe, and no flash of a
-  // half-booted console.
+  // The hint lives in localStorage, so the server can't know it and the first
+  // client render has to match what the server produced — `null` on both sides
+  // (see the `pending` branch below). Taking the decision in a layout effect
+  // then flips to the splash (or to `children`) before the browser paints:
+  // hydration-safe, and no flash of a half-booted console.
   useIsomorphicLayoutEffect(() => {
     setPhase(hasAuthHint() ? "gating" : "released");
   }, []);
@@ -165,6 +172,15 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
       setPhase("released");
     }
   }, [phase, profileSettled, minVisibleElapsed]);
+
+  // Nothing at all until the layout effect above has decided. Rendering
+  // `children` through the pending frame mounted the entire admin tree — every
+  // provider, query and effect under it — only to unmount it again the instant
+  // the splash took over, so an admin with a hint paid for a full mount/unmount
+  // cycle (and its cancelled requests) before the splash even appeared.
+  if (phase === "pending") {
+    return null;
+  }
 
   if (phase === "gating") {
     return <BrandedSplash />;

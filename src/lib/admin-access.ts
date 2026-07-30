@@ -11,7 +11,19 @@ export const ACCESS_HUB_ROUTE = "/admin/access";
 /** Self-service security settings: 2FA and password are the admin's own account, never a granted permission. */
 export const SECURITY_SETTINGS_ROUTE = "/admin/settings/security";
 
+/**
+ * The bare `/admin` landing redirector (`app/admin/page.tsx`). It renders no
+ * data of its own — it reads the profile the gate already fetched and replaces
+ * itself with `resolveFirstAllowedAdminRoute`. Listing it here is what lets it
+ * run: without it `canAccessAdminRoute("/admin")` is false (no requirements
+ * entry either), so `AdminAuthGate` rendered `PermissionDenied` over the
+ * redirector and every admin without a wildcard/super-admin profile dead-ended
+ * on the console's own entry URL.
+ */
+export const ADMIN_LANDING_ROUTE = "/admin";
+
 export const ALWAYS_ALLOWED_ADMIN_ROUTES = [
+  ADMIN_LANDING_ROUTE,
   ACCESS_HUB_ROUTE,
   "/admin/access/permission-groups",
   "/admin/access/request-elevation",

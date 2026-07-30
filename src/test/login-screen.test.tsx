@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { AdminLoginForm } from "@/components/auth/AdminLoginForm";
+import { hasAuthHint, setAuthHint } from "@/lib/api/auth-storage";
 
 const LOGIN_URL = "/api/v1/admins/login";
 const VERIFY_URL = "/api/v1/admins/verify-otp";
@@ -237,10 +238,16 @@ describe("admin login screen", () => {
     expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
   });
 
-  it("surfaces bad credentials in the role=alert pill", async () => {
-    stubRoutes({
+  /**
+   * Regression (two at once): `loginAdmin` ran with the default `auth: true`,
+   * so a wrong-password 401 fired a refresh and then *replayed the login* —
+   * two failed attempts server-side per human attempt, against the rate limit,
+   * the lockout counter and the audit trail. `REFRESH_URL` is deliberately not
+   * stubbed: a refresh attempt now fails the test loudly.
+   */
+  it("surfaces bad credentials in the role=alert pill after exactly one login request", async () => {
+    const fetchMock = stubRoutes({
       [LOGIN_URL]: [{ body: errorEnvelope("Nope", "INVALID_CREDENTIALS"), status: 401 }],
-      [REFRESH_URL]: [{ body: errorEnvelope("Nope", "INVALID_CREDENTIALS"), status: 401 }],
     });
     renderLogin();
 
@@ -250,6 +257,127 @@ describe("admin login screen", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("That email and password don't match.")
     );
     expect(screen.getByRole("heading", { name: "Admin sign-in" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter((call) => call[0] === LOGIN_URL)).toHaveLength(1);
+    expect(fetchMock.mock.calls.some((call) => call[0] === REFRESH_URL)).toBe(false);
+  });
+
+  it("keeps the browser's auth hint on a failed login", async () => {
+    // A hint from an earlier session on this browser must survive someone
+    // fat-fingering the password on the login screen.
+    setAuthHint();
+    stubRoutes({
+      [LOGIN_URL]: [{ body: errorEnvelope("Nope", "INVALID_CREDENTIALS"), status: 401 }],
+    });
+    renderLogin();
+
+    await submitCredentials();
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(hasAuthHint()).toBe(true);
+  });
+
+  /**
+   * Regression: the OTP step was six numeric slots and nothing else, so the
+   * eight 10-character base32 backup codes the setup stepper forces admins to
+   * acknowledge could not be typed in anywhere — an admin who lost their
+   * authenticator was locked out despite holding a valid code. The backend
+   * accepts one at verify-otp whenever the challenge method is `totp`
+   * (`verifyTotpOrBackupCode`).
+   */
+  describe("backup code entry", () => {
+    it("swaps the 6-slot field for a free-text backup code field", async () => {
+      stubRoutes({ [LOGIN_URL]: [OTP_CHALLENGE_TOTP] });
+      renderLogin();
+
+      await submitCredentials();
+      expect(screen.getByLabelText("Verification code")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("backup-code-toggle"));
+
+      const field = screen.getByLabelText("Backup code");
+      expect(field).toBeInTheDocument();
+      expect(field).toHaveAttribute("maxlength", "10");
+      expect(field).toHaveAttribute("type", "text");
+      expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
+      expect(screen.getByTestId("otp-method-copy")).toHaveTextContent(/backup codes you saved/i);
+    });
+
+    it("submits the entered code uppercased and space-stripped through verify-otp", async () => {
+      const fetchMock = stubRoutes({
+        [LOGIN_URL]: [OTP_CHALLENGE_TOTP],
+        [VERIFY_URL]: [VERIFIED],
+        [PROFILE_URL]: [SUPER_ADMIN_PROFILE],
+      });
+      renderLogin();
+
+      await submitCredentials();
+      fireEvent.click(screen.getByTestId("backup-code-toggle"));
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Backup code"), { target: { value: " a2bc4 def6h " } });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+      });
+
+      await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/admin/overview"));
+
+      const verifyCall = fetchMock.mock.calls.find((call) => call[0] === VERIFY_URL);
+      expect(bodyOf(verifyCall)).toEqual({ challengeId: "chal_2", code: "A2BC4DEF6H" });
+    });
+
+    it("keeps the challenge and the backup field on TOTP_INVALID, without signing the admin out", async () => {
+      setAuthHint();
+      stubRoutes({
+        [LOGIN_URL]: [OTP_CHALLENGE_TOTP],
+        [VERIFY_URL]: [{ body: errorEnvelope("Invalid TOTP or backup code", "TOTP_INVALID"), status: 401 }],
+      });
+      renderLogin();
+
+      await submitCredentials();
+      fireEvent.click(screen.getByTestId("backup-code-toggle"));
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Backup code"), { target: { value: "WRONGCODE1" } });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+      });
+
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      expect(screen.getByRole("heading", { name: "Two-factor authentication" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Backup code")).toBeInTheDocument();
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(hasAuthHint()).toBe(true);
+    });
+
+    it("returns to the authenticator view from the same toggle, with an empty field", async () => {
+      stubRoutes({ [LOGIN_URL]: [OTP_CHALLENGE_TOTP] });
+      renderLogin();
+
+      await submitCredentials();
+      fireEvent.click(screen.getByTestId("backup-code-toggle"));
+      fireEvent.change(screen.getByLabelText("Backup code"), { target: { value: "A2BC4DEF6H" } });
+
+      fireEvent.click(screen.getByTestId("backup-code-toggle"));
+
+      expect(screen.getByLabelText("Verification code")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Backup code")).not.toBeInTheDocument();
+      expect(screen.getByTestId("otp-method-copy")).toHaveTextContent(
+        "Enter the code from your authenticator app"
+      );
+    });
+
+    it("offers no backup code toggle for an emailed challenge", async () => {
+      stubRoutes({ [LOGIN_URL]: [OTP_CHALLENGE] });
+      renderLogin();
+
+      await submitCredentials();
+
+      expect(screen.getByLabelText("Verification code")).toBeInTheDocument();
+      expect(screen.queryByTestId("backup-code-toggle")).not.toBeInTheDocument();
+      expect(screen.queryByText(/backup code/i)).not.toBeInTheDocument();
+    });
   });
 
   it("returns to the credentials state from the back link", async () => {

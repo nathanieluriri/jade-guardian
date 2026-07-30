@@ -161,11 +161,23 @@ function normalizePlaces(input: unknown): PlacesAutocompleteItem[] {
   return input.filter((item): item is PlacesAutocompleteItem => !!item && typeof item === "object");
 }
 
+/**
+ * Starts a login. `auth: false` for the same reason as `verifyAdminOtp` below:
+ * there is no session to rotate yet, so the refresh-and-replay path can only do
+ * harm — a wrong password (401 `INVALID_CREDENTIALS`) used to trigger a refresh
+ * and then *replay the login*, recording two failed attempts server-side for
+ * one human attempt and burning the rate-limit/lockout budget (and the audit
+ * trail) twice as fast. It also leaves any unrelated existing auth hint alone.
+ */
 export async function loginAdmin(email: string, password: string) {
-  const response = await apiRequest<AdminLoginResponse>("/v1/admins/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+  const response = await apiRequest<AdminLoginResponse>(
+    "/v1/admins/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    },
+    { auth: false }
+  );
 
   return response.data;
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Bell, Monitor, Shield, Users, UserCog, Dot, Loader2 } from "lucide-react";
+import { Search, Bell, Monitor, Shield, ShieldCheck, Users, UserCog, Dot, Loader2 } from "lucide-react";
 import {
   CommandDialog,
   CommandInput,
@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAlerts, listElevationRequests } from "@/lib/api/admin-api";
 import { Badge } from "@/components/ui/badge";
 import { useAdminAccess } from "@/hooks/use-admin-access";
+import { SECURITY_SETTINGS_ROUTE } from "@/lib/admin-access";
 import { adminNavDescription } from "@/components/AdminSidebar";
 
 function formatRelativeTime(epochSeconds: number) {
@@ -70,6 +71,9 @@ export function CommandBar() {
         { label: "Availability Overrides", path: "/admin/governance/availability-overrides", icon: Shield },
         { label: "Access Hub", path: "/admin/access", icon: Shield },
         { label: "Access Requests", path: "/admin/access/requests", icon: Shield },
+        // Self-service, so it is always in `allowedRoutes`: the palette reaches
+        // it for every admin, exactly like the sidebar's Security group does.
+        { label: "Account Security", path: SECURITY_SETTINGS_ROUTE, icon: ShieldCheck },
       ]
         .filter((item) => allowedRoutes.has(item.path))
         .map((item) => ({ ...item, description: adminNavDescription(item.path) })),

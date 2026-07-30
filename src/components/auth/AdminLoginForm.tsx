@@ -17,6 +17,26 @@ import { useAdminLoginFlow } from "@/hooks/use-admin-auth";
 
 const OTP_LENGTH = 6;
 
+/**
+ * Backup codes are 10-character base32 — `BACKUP_CODE_LENGTH` in the backend's
+ * `admin-totp-service.ts`, the same number the setup stepper caps its proof
+ * field at (`PROOF_CODE_MAX_LENGTH`). `verify-otp` accepts one in place of an
+ * authenticator code whenever the challenge method is `totp`
+ * (`verifyTotpOrBackupCode`), which is the only way back in for an admin whose
+ * authenticator is lost — and the whole point of the eight codes the stepper
+ * makes them acknowledge.
+ */
+const BACKUP_CODE_MAX_LENGTH = 10;
+
+/**
+ * Spaces out (they survive copy/paste), uppercase in: the generated alphabet is
+ * uppercase base32 and the backend hashes the code as sent, so a lowercase
+ * paste would be rejected as a wrong code.
+ */
+function normalizeBackupCode(value: string): string {
+  return value.replace(/\s+/g, "").toUpperCase();
+}
+
 const credentialsSchema = z.object({
   email: z.string().min(1, "Enter your admin email").email("Enter a valid email address"),
   password: z.string().min(1, "Enter your password"),
@@ -47,8 +67,13 @@ export function AdminLoginForm() {
   const { step, submitCredentials, submitOtp, backToCredentials, error, isPending } =
     useAdminLoginFlow();
   const [code, setCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
 
   const isOtpStep = step.kind === "otp";
+  // Only a `totp` challenge can be answered with a backup code — an emailed
+  // 6-digit code has no backup form, so the email UI is left untouched.
+  const offersBackupCode = isOtpStep && step.method === "totp";
+  const isBackupCodeEntry = offersBackupCode && useBackupCode;
   const forgotPasswordBaseUrl = process.env.NEXT_PUBLIC_AUTH0_RESET_PASSWORD_URL;
 
   const {
@@ -62,9 +87,13 @@ export function AdminLoginForm() {
   });
   const emailValue = watch("email");
 
-  // A fresh challenge always starts from an empty field.
+  // A fresh challenge always starts from an empty field, back on the
+  // authenticator-code view.
   useEffect(() => {
-    if (!isOtpStep) setCode("");
+    if (!isOtpStep) {
+      setCode("");
+      setUseBackupCode(false);
+    }
   }, [isOtpStep]);
 
   const forgotPasswordHref = forgotPasswordBaseUrl
@@ -75,12 +104,29 @@ export function AdminLoginForm() {
     await submitCredentials(values);
   });
 
+  /**
+   * One submit path for both views — `submitOtp` is the same call either way,
+   * since the backend decides per challenge whether the string it gets is a
+   * TOTP or a backup code.
+   */
   async function verifyCode(value: string) {
-    if (value.length < OTP_LENGTH || isPending) return;
-    await submitOtp(value);
-    // Whatever the outcome, the burnt code should not linger in the boxes.
+    if (isPending) return;
+    const submitted = isBackupCodeEntry ? normalizeBackupCode(value) : value;
+    if (isBackupCodeEntry ? submitted.length === 0 : submitted.length < OTP_LENGTH) return;
+    await submitOtp(submitted);
+    // Whatever the outcome, the burnt code should not linger on screen.
     setCode("");
   }
+
+  /** Switching views always starts from an empty field: the two accept different code shapes. */
+  function switchToBackupCode(next: boolean) {
+    setUseBackupCode(next);
+    setCode("");
+  }
+
+  const canSubmitCode = isBackupCodeEntry
+    ? normalizeBackupCode(code).length > 0
+    : code.length >= OTP_LENGTH;
 
   const errorPill = error ? <AuthErrorPill message={error} /> : null;
 
@@ -112,7 +158,9 @@ export function AdminLoginForm() {
           </div>
 
           <p data-testid="otp-method-copy" className="text-center text-sm text-muted-foreground">
-            {step.method === "totp" ? (
+            {isBackupCodeEntry ? (
+              "Enter one of the single-use backup codes you saved"
+            ) : step.method === "totp" ? (
               "Enter the code from your authenticator app"
             ) : (
               <>
@@ -122,36 +170,67 @@ export function AdminLoginForm() {
             )}
           </p>
 
-          <div className="space-y-3">
-            <label
-              htmlFor="otp-code"
-              className="block text-center text-xs font-medium text-foreground/80"
-            >
-              Verification code
-            </label>
-            <OtpInput
-              id="otp-code"
-              length={OTP_LENGTH}
-              value={code}
-              onChange={setCode}
-              onComplete={(value) => void verifyCode(value)}
-              disabled={isPending}
+          {isBackupCodeEntry ? (
+            <AuthField
+              id="backup-code"
+              label="Backup code"
+              icon={KeyRound}
+              type="text"
+              inputMode="text"
+              autoComplete="one-time-code"
+              spellCheck={false}
+              autoCapitalize="characters"
+              maxLength={BACKUP_CODE_MAX_LENGTH}
+              placeholder="10-character backup code"
+              hint="Each code works once, then it's spent."
               autoFocus
-              aria-describedby={step.method === "email" ? "otp-code-hint" : undefined}
+              disabled={isPending}
+              value={code}
+              onChange={(event) => setCode(normalizeBackupCode(event.target.value))}
             />
-            {step.method === "email" && (
-              <p id="otp-code-hint" className="text-center text-[11px] text-muted-foreground">
-                Can&apos;t find it? Check your spam folder.
-              </p>
-            )}
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <label
+                htmlFor="otp-code"
+                className="block text-center text-xs font-medium text-foreground/80"
+              >
+                Verification code
+              </label>
+              <OtpInput
+                id="otp-code"
+                length={OTP_LENGTH}
+                value={code}
+                onChange={setCode}
+                onComplete={(value) => void verifyCode(value)}
+                disabled={isPending}
+                autoFocus
+                aria-describedby={step.method === "email" ? "otp-code-hint" : undefined}
+              />
+              {step.method === "email" && (
+                <p id="otp-code-hint" className="text-center text-[11px] text-muted-foreground">
+                  Can&apos;t find it? Check your spam folder.
+                </p>
+              )}
+            </div>
+          )}
+
+          {offersBackupCode && (
+            <button
+              type="button"
+              data-testid="backup-code-toggle"
+              onClick={() => switchToBackupCode(!useBackupCode)}
+              className="w-full rounded-lg py-1 text-center text-xs font-medium text-primary-strong transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
+              {useBackupCode ? "Use your authenticator code instead" : "Use a backup code instead"}
+            </button>
+          )}
 
           {errorPill}
 
           <AuthPrimaryButton
             type="button"
             onClick={() => void verifyCode(code)}
-            disabled={code.length < OTP_LENGTH}
+            disabled={!canSubmitCode}
             isPending={isPending}
             pendingLabel="Verifying…"
           >

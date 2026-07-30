@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -184,6 +185,41 @@ describe("BootstrapGate", () => {
 
     expect(screen.getByTestId("console-children")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Regression: the pending phase rendered `children`, so the server markup —
+   * and the first client frame with it — contained the whole admin tree, which
+   * the layout effect then unmounted again to put the splash up. Rendering
+   * `null` while pending costs that mount/unmount cycle nothing and still
+   * hydrates cleanly, because server and first client render agree on `null`.
+   *
+   * `renderToStaticMarkup` is what makes the pending frame observable at all:
+   * under `render()` the layout effect has already run by the time control comes
+   * back, so the frame this asserts on is otherwise invisible to the test.
+   */
+  it("renders nothing through the pending phase, so the server emits no console markup", () => {
+    setAuthHint();
+    stubProfile("resolves");
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    // jsdom defines `window`, so `useIsomorphicLayoutEffect` resolves to the
+    // layout variant even when driven through the server renderer and React
+    // warns about it. Under real SSR `window` is undefined and the passive
+    // effect is used instead, so the warning is an artifact of this harness.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <BootstrapGate>
+          <div data-testid="console-children">Admin console</div>
+        </BootstrapGate>
+      </QueryClientProvider>
+    );
+    consoleError.mockRestore();
+
+    expect(markup).toBe("");
   });
 
   it("keeps the splash up for the minimum visible window even when the profile resolves instantly", async () => {
