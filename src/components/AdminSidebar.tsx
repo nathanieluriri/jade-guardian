@@ -38,7 +38,8 @@ import {
   Radio,
   Megaphone,
   Tags,
-  CalendarClock
+  CalendarClock,
+  ShieldCheck
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -61,6 +62,7 @@ import { fetchAlerts, listElevationRequests } from "@/lib/api/admin-api";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAdminAccess } from "@/hooks/use-admin-access";
 import { useAdminLogout } from "@/hooks/use-admin-auth";
+import { SECURITY_SETTINGS_ROUTE } from "@/lib/admin-access";
 
 type SidebarLinkItem = {
   kind: "link";
@@ -98,6 +100,9 @@ const menuItems: SidebarMenuEntry[] = [
       { kind: "link", title: "Alerts", url: "/admin/security/alerts", icon: Bell },
       { kind: "link", title: "Sessions", url: "/admin/security/sessions", icon: Monitor },
       { kind: "link", title: "Audit Log", url: "/admin/security/audit", icon: FileSearch },
+      // Self-service, so it is always in `allowedRoutes` — this group therefore
+      // never disappears entirely, even for an admin with no monitoring access.
+      { kind: "link", title: "Account Security", url: SECURITY_SETTINGS_ROUTE, icon: ShieldCheck },
     ],
   },
   {

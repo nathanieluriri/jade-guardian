@@ -8,10 +8,14 @@ export interface PermissionRequirement {
 
 export const ACCESS_HUB_ROUTE = "/admin/access";
 
+/** Self-service security settings: 2FA and password are the admin's own account, never a granted permission. */
+export const SECURITY_SETTINGS_ROUTE = "/admin/settings/security";
+
 export const ALWAYS_ALLOWED_ADMIN_ROUTES = [
   ACCESS_HUB_ROUTE,
   "/admin/access/permission-groups",
   "/admin/access/request-elevation",
+  SECURITY_SETTINGS_ROUTE,
 ] as const;
 
 export const ROUTE_TITLES: Record<string, string> = {
@@ -29,6 +33,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   "/admin/access/permission-groups": "Permission Groups",
   "/admin/access/request-elevation": "Request Elevation",
   "/admin/access/requests": "Access Requests",
+  [SECURITY_SETTINGS_ROUTE]: "Account Security",
   "/admin/operations/service-definitions": "Service Definitions",
   "/admin/operations/add-ons": "Add-ons",
   "/admin/operations/pricing-rules": "Pricing Rules",
@@ -75,7 +80,7 @@ export const ADMIN_ROUTE_REQUIREMENTS: Record<string, PermissionRequirement[]> =
     { method: "GET", path: "/v1/admins/onboarding/queue" },
     { method: "GET", path: "/v1/admins/cleaners/{cleaner_id}" },
   ],
-  "/admin/team": [{ method: "GET", path: "/v1/admins/" }],
+  "/admin/team": [{ method: "GET", path: "/v1/admins" }],
   "/admin/users": [
     { method: "GET", path: "/v1/admins/reports/users/summary" },
     { method: "GET", path: "/v1/admins/reports/users/signups-trend" },
@@ -130,11 +135,23 @@ type ProfilePermissionEntry = {
   methods: Set<string>;
 };
 
+/**
+ * Strips the API mount prefix so a permission string and a requirement compare
+ * segment-for-segment.
+ *
+ * Both `/api/v1/...` and `/v1/...` have to go: the backend's access presets
+ * (`app/server/security/admin-presets.ts`) ship keys in the real wire format
+ * `METHOD:/api/v1/admins/...`, while the requirements in this file are written
+ * `/v1/admins/...`. Handling only `/v1` (the original behaviour) left every real
+ * key two segments longer than the requirement it should have satisfied, so
+ * `pathMatches` rejected it on length alone and nobody but an `isSuperAdmin` /
+ * `"*"` holder passed any check.
+ */
 function normalizePath(path: string): string {
   const trimmed = path.trim().split("?")[0];
   if (!trimmed) return "/";
   const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  const withoutVersionPrefix = withLeadingSlash.replace(/^\/v\d+\//, "/");
+  const withoutVersionPrefix = withLeadingSlash.replace(/^\/(?:api\/)?v\d+(?=\/|$)/, "");
   const clean = withoutVersionPrefix.replace(/\/+$/, "");
   return clean || "/";
 }

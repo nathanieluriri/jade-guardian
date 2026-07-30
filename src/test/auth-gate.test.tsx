@@ -257,7 +257,7 @@ describe("AdminAuthGate", () => {
   });
 
   it("renders PermissionDenied instead of silently redirecting when the current route is disallowed", async () => {
-    pathnameState.current = "/admin/team"; // requires GET /v1/admins/
+    pathnameState.current = "/admin/team"; // requires GET /v1/admins
     setAuthHint();
     stubRoutes({
       [PROFILE_URL]: [{ body: profileBody() }],
@@ -266,7 +266,7 @@ describe("AdminAuthGate", () => {
     renderGate();
 
     await screen.findByTestId("permission-denied");
-    expect(screen.getByText("GET /v1/admins/")).toBeInTheDocument();
+    expect(screen.getByText("GET /v1/admins")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to available area" })).toHaveAttribute("href", "/admin/access");
     expect(screen.queryByTestId("protected-content")).not.toBeInTheDocument();
     // No silent bounce to some other allowed route.
