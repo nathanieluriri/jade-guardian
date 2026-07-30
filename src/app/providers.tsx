@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { BrandedSplash } from "@/components/auth/branded-splash";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
-import { hasAuthHint } from "@/lib/api/auth-storage";
+import { clearAuthHint, hasAuthHint } from "@/lib/api/auth-storage";
+import type { ApiError } from "@/lib/api/types";
 
 /**
  * Floor for the boot splash: long enough that the animation reads as
@@ -26,7 +28,73 @@ export const SAFETY_TIMEOUT_MS = 10_000;
 // browser-only concern, so fall back to the passive effect on the server.
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
+/** Minimal shape `handleAdminQueryError` needs from `useRouter()` — narrow on purpose so it's trivial to stub in tests. */
+export interface AdminQueryErrorRouter {
+  replace: (href: string) => void;
+}
+
+function isApiErrorLike(error: unknown): error is Partial<ApiError> {
+  return typeof error === "object" && error !== null && ("code" in error || "status" in error);
+}
+
+/**
+ * Central query/mutation error interception. TanStack Query v5 removed
+ * per-query `onError` entirely, so a `QueryCache`/`MutationCache`-level
+ * handler is the only place left to react to any request's error in one
+ * spot, regardless of which screen or hook made it.
+ *
+ *  - `PASSWORD_CHANGE_REQUIRED`: the backend answers this on *every*
+ *    permissioned endpoint the moment `mustChangePassword` flips true (see
+ *    ADMIN_AUTH.md), not just the profile fetch. `AdminAuthGate` already
+ *    redirects proactively from the profile's own flag; this is the reactive
+ *    backstop for every other query/mutation in the app. Guarded against the
+ *    path the admin is already on so it can't fight the router on
+ *    `/admin/change-password` itself — a bare route rendered outside
+ *    `AdminAuthGate` (see `admin/layout.tsx`'s `BARE_ADMIN_ROUTES`) that also
+ *    observes the profile query, so a repeat of this same error there must
+ *    not re-trigger a redirect to the page it's already on.
+ *  - `403 FORBIDDEN`: deliberately a no-op. The session is still good; only
+ *    this one action is disallowed. Logging the admin out would turn a
+ *    permission error into a strictly worse experience than just refusing the
+ *    action — the screen (or `AdminAuthGate`'s route guard) is responsible for
+ *    surfacing `PermissionDenied`.
+ *  - A 401 that survives `apiRequest`'s own single-flight refresh: `client.ts`
+ *    has already cleared the hint by the time this fires; this is what turns
+ *    that into an actual navigation for every query/mutation, not just the
+ *    profile query `AdminAuthGate` itself observes.
+ */
+export function handleAdminQueryError(
+  error: unknown,
+  router: AdminQueryErrorRouter,
+  currentPath: string | null
+): void {
+  if (!isApiErrorLike(error)) return;
+
+  if (error.code === "PASSWORD_CHANGE_REQUIRED") {
+    if (currentPath !== "/admin/change-password") {
+      router.replace("/admin/change-password");
+    }
+    return;
+  }
+
+  if (error.status === 403) {
+    return;
+  }
+
+  if (error.status === 401) {
+    clearAuthHint();
+    if (currentPath !== "/admin/login") {
+      router.replace("/admin/login");
+    }
+  }
+}
+
+function currentPathname(): string | null {
+  return typeof window === "undefined" ? null : window.location.pathname;
+}
+
 export function Providers({ children, initialTheme }: { children: React.ReactNode; initialTheme: "light" | "dark" }) {
+  const router = useRouter();
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -36,6 +104,12 @@ export function Providers({ children, initialTheme }: { children: React.ReactNod
             refetchOnWindowFocus: false,
           },
         },
+        queryCache: new QueryCache({
+          onError: (error) => handleAdminQueryError(error, router, currentPathname()),
+        }),
+        mutationCache: new MutationCache({
+          onError: (error) => handleAdminQueryError(error, router, currentPathname()),
+        }),
       })
   );
 
