@@ -322,6 +322,7 @@ export async function fetchElevationRequestStatus() {
   return response.data;
 }
 
+/** Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array. */
 export async function listElevationRequests(params: {
   status?: "PENDING" | "APPROVED" | "REJECTED";
   start?: number;
@@ -331,8 +332,8 @@ export async function listElevationRequests(params: {
   if (params.status) search.set("status", params.status);
   search.set("start", String(params.start ?? 0));
   search.set("stop", String(params.stop ?? 50));
-  const response = await apiRequest<ElevationRequestItem[]>(`/v1/admins/access/requests?${search.toString()}`);
-  return response.data || [];
+  const response = await apiRequest<{ items?: ElevationRequestItem[] }>(`/v1/admins/access/requests?${search.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function decideElevationRequest(requestId: string, payload: DecideElevationRequestPayload) {
@@ -356,6 +357,7 @@ export async function fetchAuthHeatmap(days = 14) {
   return response.data?.items || [];
 }
 
+/** Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array. */
 export async function fetchAlerts(params: {
   status?: string;
   unreadOnly?: boolean;
@@ -368,8 +370,8 @@ export async function fetchAlerts(params: {
   search.set("start", String(params.start ?? 0));
   search.set("stop", String(params.stop ?? 20));
 
-  const response = await apiRequest<MonitoringAlert[]>(`/v1/admins/monitoring/alerts?${search.toString()}`);
-  return response.data || [];
+  const response = await apiRequest<{ items?: MonitoringAlert[] }>(`/v1/admins/monitoring/alerts?${search.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function updateAlertReadState(alertId: string, isRead: boolean) {
@@ -546,16 +548,18 @@ export async function reviewCleanerOnboarding(
   });
 }
 
+/** Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array. */
 export async function listCleaners(start = 0, stop = 100) {
-  const response = await apiRequest<CleanerListItem[]>(`/v1/admins/cleaners?start=${start}&stop=${stop}`);
-  return response.data || [];
+  const response = await apiRequest<{ items?: CleanerListItem[] }>(`/v1/admins/cleaners?start=${start}&stop=${stop}`);
+  return response.data?.items ?? [];
 }
 
+/** Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array. */
 export async function listOnboardingQueue(start = 0, stop = 50, sort = "submitted_at") {
-  const response = await apiRequest<CleanerListItem[]>(
+  const response = await apiRequest<{ items?: CleanerListItem[] }>(
     `/v1/admins/onboarding/queue?start=${start}&stop=${stop}&sort=${encodeURIComponent(sort)}`
   );
-  return response.data || [];
+  return response.data?.items ?? [];
 }
 
 export async function fetchCleanerById(cleanerId: string) {
@@ -563,9 +567,10 @@ export async function fetchCleanerById(cleanerId: string) {
   return response.data;
 }
 
+/** Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array. */
 export async function listCustomers(start = 0, stop = 100) {
-  const response = await apiRequest<CustomerListItem[]>(`/v1/admins/customers?start=${start}&stop=${stop}`);
-  return response.data || [];
+  const response = await apiRequest<{ items?: CustomerListItem[] }>(`/v1/admins/customers?start=${start}&stop=${stop}`);
+  return response.data?.items ?? [];
 }
 
 export async function fetchCustomerById(customerId: string) {
@@ -586,14 +591,20 @@ export async function autocompleteAdminUsers(query: string, limit = 10) {
   };
 }
 
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare
+ * array — the route handler even forces it through `GenericList.parse()`. The old
+ * `Array.isArray(response.data)` guard was always false against a real backend, so this
+ * always returned `[]`.
+ */
 export async function listAdminCustomerPlaces(customerId: string, start = 0, stop = 20) {
   const search = new URLSearchParams();
   search.set("start", String(start));
   search.set("stop", String(stop));
-  const response = await apiRequest<AdminCustomerPlaceOut[]>(
+  const response = await apiRequest<{ items?: AdminCustomerPlaceOut[] }>(
     `/v1/admins/customers/${customerId}/places?${search.toString()}`
   );
-  return Array.isArray(response.data) ? response.data : [];
+  return response.data?.items ?? [];
 }
 
 export async function createAdminCustomerPlace(customerId: string, payload: AdminCreateCustomerPlaceRequest) {
