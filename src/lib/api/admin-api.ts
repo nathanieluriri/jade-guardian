@@ -552,6 +552,12 @@ export async function listAdmins(params: { limit?: number; skip?: number } = {})
   return response.data?.items ?? [];
 }
 
+/**
+ * @deprecated The backend marks `POST /admins/signup` deprecated in favour of
+ * the invite flow (`inviteAdmin`), which generates and emails a temporary
+ * password and forces a change on first login. Kept only for the legacy
+ * bootstrap path; no screen calls it.
+ */
 export async function createAdmin(payload: CreateAdminRequest) {
   const response = await apiRequest<AdminProfile>("/v1/admins/signup", {
     method: "POST",

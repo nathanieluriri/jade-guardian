@@ -189,13 +189,15 @@ export function AdminSidebar() {
     "Comms & Governance": false,
   });
 
+  // `AdminOut` sends `firstName`/`lastName`; there is no `full_name` on the
+  // wire, so the old fallback meant this always showed the email prefix.
   const displayName = useMemo(() => {
-    const fullName = profileQuery.data?.full_name?.trim();
+    const fullName = `${profileQuery.data?.firstName || ""} ${profileQuery.data?.lastName || ""}`.trim();
     if (fullName) return fullName;
     const email = profileQuery.data?.email?.trim();
     if (email) return email.split("@")[0] || "Admin";
     return "Admin";
-  }, [profileQuery.data?.email, profileQuery.data?.full_name]);
+  }, [profileQuery.data?.email, profileQuery.data?.firstName, profileQuery.data?.lastName]);
 
   const displayEmail = useMemo(() => {
     const email = profileQuery.data?.email?.trim();

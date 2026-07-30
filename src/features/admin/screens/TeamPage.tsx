@@ -1,24 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Plus, Trash2, UserPlus, Shield, CircleAlert } from "lucide-react";
-import { createAdmin, deleteOwnAdminAccount, listAdmins } from "@/lib/api/admin-api";
+import { KeyRound, MailPlus, Trash2, Shield, CircleAlert, UserPlus } from "lucide-react";
+import { deleteOwnAdminAccount } from "@/lib/api/admin-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,64 +23,60 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { AdminProfile } from "@/lib/api/types";
+import type { AccessPresetBulkResult, AdminProfile } from "@/lib/api/types";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction } from "@/lib/admin-access";
+import { AccessPresetSelect } from "@/features/admins/components/access-preset-select";
+import { InviteAdminDialog } from "@/features/admins/components/invite-admin-dialog";
+import {
+  useAccessPresets,
+  useAdmins,
+  useBulkSetAccessPreset,
+  useResendInvite,
+  useSetAccessPreset,
+} from "@/features/admins/hooks/use-admins";
 
 function resolveAdminId(admin: Partial<AdminProfile>): string {
   if (typeof admin.id === "string" && admin.id.trim()) return admin.id;
   return "unknown";
 }
 
+/**
+ * The backend's `AdminOut` carries `firstName`/`lastName` — there is no
+ * `full_name` on the wire, so the name is joined here. Email and id are
+ * fallbacks for a partial row, never invented display data.
+ */
 function resolveDisplayName(admin: AdminProfile): string {
-  if (admin.full_name?.trim()) return admin.full_name;
-  if (admin.email) return admin.email.split("@")[0];
-  return resolveAdminId(admin);
-}
-
-function formatLastAuth(lastAuth?: number | null): string {
-  if (!lastAuth) return "Never";
-  return new Date(lastAuth * 1000).toLocaleString();
-}
-
-function exportInviteText(email: string) {
-  return `Welcome to Cleanm Admin. Login with ${email} and complete credential setup in the security center.`;
+  const name = `${admin.firstName || ""} ${admin.lastName || ""}`.trim();
+  if (name) return name;
+  return admin.email?.trim() || resolveAdminId(admin);
 }
 
 export default function TeamPage() {
-  const queryClient = useQueryClient();
   const profileQuery = useAdminProfile();
   const [skip, setSkip] = useState(0);
   const [limit] = useState(20);
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
-  const [form, setForm] = useState({ full_name: "", email: "", password: "" });
-  const canCreateAdmin = canAccessAdminAction({ method: "POST", path: "/v1/admins/signup" }, profileQuery.data);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkPreset, setBulkPreset] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<AccessPresetBulkResult | null>(null);
+
+  // Everything on this page that writes to another admin's account sits behind
+  // the invite permission — the backend grants admin-account management as one
+  // bundle, so a caller without it would only get dead controls.
+  const canManageAdmins = canAccessAdminAction({ method: "POST", path: "/v1/admins/invites" }, profileQuery.data);
   const canDeleteOwnAccount = canAccessAdminAction({ method: "DELETE", path: "/v1/admins/account" }, profileQuery.data);
+  const currentAdminId = profileQuery.data?.id ?? null;
 
-  const adminsQuery = useQuery({
-    queryKey: ["admins", { skip, limit, search }],
-    queryFn: () => listAdmins({ skip, limit }),
-  });
+  const adminsQuery = useAdmins({ skip, limit });
+  const presetsQuery = useAccessPresets();
+  const presets = presetsQuery.data ?? [];
 
-  const createMutation = useMutation({
-    mutationFn: createAdmin,
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ["admins"] });
-      setIsCreateOpen(false);
-      setForm({ full_name: "", email: "", password: "" });
-      if (created?.email) {
-        navigator.clipboard
-          .writeText(exportInviteText(created.email))
-          .then(() => toast.success("Admin created. Invite note copied."))
-          .catch(() => toast.success("Admin created successfully."));
-      } else {
-        toast.success("Admin created successfully.");
-      }
-    },
-    onError: () => toast.error("Failed to create admin."),
-  });
+  const resendMutation = useResendInvite();
+  const setPresetMutation = useSetAccessPreset();
+  const bulkPresetMutation = useBulkSetAccessPreset();
 
   const deleteMutation = useMutation({
     mutationFn: deleteOwnAdminAccount,
@@ -104,65 +92,92 @@ export default function TeamPage() {
     const q = search.trim().toLowerCase();
     if (!q) return all;
     return all.filter((admin) => {
-      const adminId = resolveAdminId(admin).toLowerCase();
       return (
-        adminId.includes(q) ||
+        resolveAdminId(admin).toLowerCase().includes(q) ||
         (admin.email || "").toLowerCase().includes(q) ||
-        (admin.full_name || "").toLowerCase().includes(q)
+        resolveDisplayName(admin).toLowerCase().includes(q)
       );
     });
   }, [adminsQuery.data, search]);
+
+  const presetLabel = (key: string | null) => presets.find((preset) => preset.key === key)?.label || key || "No preset";
+
+  const nameForId = (id: string) => {
+    const match = (adminsQuery.data || []).find((admin) => resolveAdminId(admin) === id);
+    return match ? resolveDisplayName(match) : id;
+  };
+
+  // Read the selection back off the rendered rows so the bulk payload always
+  // follows table order regardless of the order the boxes were ticked in.
+  const selectedAdmins = filteredAdmins.filter((admin) => selectedIds.includes(resolveAdminId(admin)));
+  const allVisibleSelected = filteredAdmins.length > 0 && selectedAdmins.length === filteredAdmins.length;
+
+  const toggleRow = (adminId: string, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? [...new Set([...prev, adminId])] : prev.filter((id) => id !== adminId)));
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    const visibleIds = filteredAdmins.map((admin) => resolveAdminId(admin));
+    setSelectedIds((prev) =>
+      checked ? [...new Set([...prev, ...visibleIds])] : prev.filter((id) => !visibleIds.includes(id))
+    );
+  };
+
+  const applyBulkPreset = async () => {
+    if (!bulkPreset || selectedAdmins.length === 0) return;
+    setBulkResult(null);
+    const adminIds = selectedAdmins.map((admin) => resolveAdminId(admin));
+    try {
+      const result = await bulkPresetMutation.mutateAsync({
+        adminIds,
+        preset: bulkPreset,
+        label: presetLabel(bulkPreset),
+      });
+      setBulkResult(result);
+      // Keep only the rows the backend refused so a retry targets exactly them.
+      setSelectedIds(result.skipped.map((entry) => entry.id));
+    } catch {
+      // The hook toasts the failure; the selection stays put for a retry.
+    }
+  };
+
+  const columnCount = canManageAdmins ? 8 : 6;
 
   return (
     <div className="space-y-6 max-w-[1200px]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tighter">Admin Team</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage admin access, invite new admins, and review account posture.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Invite admins, re-scope their access preset, and review 2FA posture.
+          </p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" disabled={!canCreateAdmin}>
-              <UserPlus className="h-4 w-4" />
-              Invite Admin
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Admin</DialogTitle>
-              <DialogDescription>Provision a new admin account with immediate access.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="full-name">Full Name</Label>
-                <Input id="full-name" value={form.full_name} onChange={(e) => setForm((prev) => ({ ...prev, full_name: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Temporary Password</Label>
-                <Input id="password" type="password" value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => createMutation.mutate(form)}
-                disabled={createMutation.isPending || !canCreateAdmin || !form.full_name.trim() || !form.email.trim() || !form.password.trim()}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                {createMutation.isPending ? "Creating..." : "Create Admin"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {canManageAdmins && (
+          <Button className="gap-2" onClick={() => setIsInviteOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Invite admin
+          </Button>
+        )}
       </div>
+
+      {canManageAdmins && (
+        <InviteAdminDialog
+          open={isInviteOpen}
+          onOpenChange={setIsInviteOpen}
+          presets={presets}
+          isLoadingPresets={presetsQuery.isLoading}
+        />
+      )}
 
       <div className="surface-card p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by ID, email, or name" className="sm:max-w-sm" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by ID, email, or name"
+            className="sm:max-w-sm"
+            aria-label="Search admins"
+          />
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setSkip(Math.max(0, skip - limit))}>
               Previous
@@ -173,60 +188,197 @@ export default function TeamPage() {
           </div>
         </div>
 
+        {canManageAdmins && selectedAdmins.length > 0 && (
+          <div
+            role="region"
+            aria-label="Bulk preset assignment"
+            className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span className="text-sm font-medium">{`${selectedAdmins.length} selected`}</span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <AccessPresetSelect
+                presets={presets}
+                isLoading={presetsQuery.isLoading}
+                value={bulkPreset}
+                onValueChange={setBulkPreset}
+                ariaLabel="Access preset for selected admins"
+                size="sm"
+              />
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={!bulkPreset || bulkPresetMutation.isPending}
+                onClick={applyBulkPreset}
+              >
+                <KeyRound className="h-4 w-4" />
+                {`Change preset for ${selectedAdmins.length} selected`}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedIds([]);
+                  setBulkResult(null);
+                }}
+              >
+                Clear selection
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {canManageAdmins && bulkResult && (
+          <div role="status" className="mt-3 rounded-lg border border-border p-3 text-sm">
+            <p className="font-medium">{`${bulkResult.updated} updated, ${bulkResult.skipped.length} skipped`}</p>
+            {bulkResult.skipped.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {bulkResult.skipped.map((entry) => (
+                  <li key={entry.id}>{`${nameForId(entry.id)} — ${entry.reason}`}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div className="mt-4 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
+                {canManageAdmins && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allVisibleSelected ? true : selectedAdmins.length > 0 ? "indeterminate" : false}
+                      onCheckedChange={(checked) => toggleAllVisible(checked === true)}
+                      aria-label="Select all admins"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Admin</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Access preset</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Email Verified</TableHead>
-                <TableHead>Last Auth</TableHead>
                 <TableHead>ID</TableHead>
+                {canManageAdmins && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {adminsQuery.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="font-mono-data text-muted-foreground">
+                  <TableCell colSpan={columnCount} className="font-mono-data text-muted-foreground">
                     Loading admins...
                   </TableCell>
                 </TableRow>
               )}
               {adminsQuery.isError && (
                 <TableRow>
-                  <TableCell colSpan={6} className="font-mono-data text-destructive">
+                  <TableCell colSpan={columnCount} className="font-mono-data text-destructive">
                     Failed to fetch admins.
                   </TableCell>
                 </TableRow>
               )}
               {!adminsQuery.isLoading && !adminsQuery.isError && filteredAdmins.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground">
+                  <TableCell colSpan={columnCount} className="text-muted-foreground">
                     No admins found for current filters.
                   </TableCell>
                 </TableRow>
               )}
-              {filteredAdmins.map((admin, index) => (
-                <motion.tr
-                  key={`${resolveAdminId(admin)}-${admin.email || "no-email"}-${index}`}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.02 }}
-                  className="border-b border-border"
-                >
-                  <TableCell className="font-medium">{resolveDisplayName(admin)}</TableCell>
-                  <TableCell className="font-mono-data">{admin.email || "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant={admin.accountStatus === "ACTIVE" ? "success" : "warning"}>{admin.accountStatus || "ACTIVE"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={admin.email_verified ? "success" : "secondary"}>{admin.email_verified ? "Verified" : "Pending"}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatLastAuth(admin.last_auth_at)}</TableCell>
-                  <TableCell className="font-mono-data text-xs">{resolveAdminId(admin)}</TableCell>
-                </motion.tr>
-              ))}
+              {filteredAdmins.map((admin, index) => {
+                const adminId = resolveAdminId(admin);
+                const displayName = resolveDisplayName(admin);
+                const isSelected = selectedIds.includes(adminId);
+
+                return (
+                  <motion.tr
+                    key={`${adminId}-${admin.email || "no-email"}-${index}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.02 }}
+                    className="border-b border-border"
+                  >
+                    {canManageAdmins && (
+                      <TableCell>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => toggleRow(adminId, checked === true)}
+                          aria-label={`Select ${displayName}`}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell className="font-medium">
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          {displayName}
+                          {currentAdminId === adminId && (
+                            <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">You</span>
+                          )}
+                        </span>
+                        {admin.mustChangePassword && (
+                          <Badge variant="warning" className="w-fit">
+                            Invite pending
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono-data">{admin.email || "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={admin.accessPreset ? "info" : "secondary"}>
+                          {presetLabel(admin.accessPreset)}
+                        </Badge>
+                        {canManageAdmins && (
+                          <AccessPresetSelect
+                            presets={presets}
+                            isLoading={presetsQuery.isLoading}
+                            value={admin.accessPreset}
+                            triggerLabel="Change preset"
+                            ariaLabel={`Access preset for ${displayName}`}
+                            size="sm"
+                            disabled={setPresetMutation.isPending}
+                            onValueChange={(preset) =>
+                              setPresetMutation.mutate({
+                                adminId,
+                                preset,
+                                label: presetLabel(preset),
+                                name: displayName,
+                              })
+                            }
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={admin.totpEnabled ? "success" : "secondary"}>
+                        {admin.totpEnabled ? "On" : "Off"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={admin.accountStatus === "ACTIVE" ? "success" : "warning"}>
+                        {admin.accountStatus || "ACTIVE"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono-data text-xs">{adminId}</TableCell>
+                    {canManageAdmins && (
+                      <TableCell>
+                        {admin.mustChangePassword && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            aria-label={`Resend invite to ${displayName}`}
+                            disabled={resendMutation.isPending}
+                            onClick={() => resendMutation.mutate({ adminId, name: displayName })}
+                          >
+                            <MailPlus className="h-4 w-4" />
+                            Resend invite
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
+                  </motion.tr>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

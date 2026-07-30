@@ -20,17 +20,33 @@ export interface AdminProfilePermissionEntry {
   methods: string[];
 }
 
+export type AdminAccountStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "DEACTIVATED" | "DELETED";
+
+/**
+ * Mirrors the backend's `AdminOut` (`app/server/schemas/admin.ts`) field for
+ * field. Nothing else is on the wire: the earlier `full_name`,
+ * `email_verified` and `last_auth_at` fields were invented client-side —
+ * `AdminOut` sends `firstName`/`lastName` and has no verification or
+ * last-auth field at all, so anything rendered from them was always a
+ * placeholder ("Pending" / "Never" / the email prefix as a name).
+ *
+ * The name halves and the audit timestamps stay optional so a partial
+ * profile (test fixture, older deployment) still type-checks; everything the
+ * auth gate depends on stays required.
+ */
 export interface AdminProfile {
   id: string;
-  full_name?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
-  accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-  email_verified?: boolean;
-  last_auth_at?: number | null;
+  accountStatus?: AdminAccountStatus;
   isSuperAdmin?: boolean;
+  preferredLanguage?: "en" | "fr";
   accessPreset: string | null;
   mustChangePassword: boolean;
   totpEnabled: boolean;
+  dateCreated?: number | null;
+  lastUpdated?: number | null;
   permissionList?: string[] | { permissions: Array<string | AdminProfilePermissionEntry> };
 }
 
