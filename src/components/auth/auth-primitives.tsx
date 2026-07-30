@@ -179,7 +179,10 @@ export function AuthPrimaryButton({
       onClick={onClick}
       disabled={disabled || isPending}
       aria-busy={isPending || undefined}
-      className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-brand transition-all duration-200 hover:bg-emerald-600 hover:shadow-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 md:text-sm"
+      // `hover:bg-primary-strong`, not `hover:bg-emerald-600`: now that
+      // `--primary` is deepened past emerald-600, hovering onto that step
+      // would make the CTA *lighter* and drop the white label to 3.35:1.
+      className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-brand transition-all duration-200 hover:bg-primary-strong hover:shadow-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 md:text-sm"
     >
       {isPending ? (
         <>
