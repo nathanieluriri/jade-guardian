@@ -14,6 +14,12 @@ export interface ApiError {
   details?: unknown;
 }
 
+export interface AdminProfilePermissionEntry {
+  key?: string;
+  path: string;
+  methods: string[];
+}
+
 export interface AdminProfile {
   id: string;
   full_name?: string;
@@ -21,15 +27,35 @@ export interface AdminProfile {
   accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
   email_verified?: boolean;
   last_auth_at?: number | null;
-  permissionList?: {
-    permissions: Array<string | { name: string; methods: string[]; path: string; key?: string; description?: string }>;
-  };
+  isSuperAdmin?: boolean;
+  accessPreset: string | null;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  permissionList?: string[] | { permissions: Array<string | AdminProfilePermissionEntry> };
 }
 
-export interface AdminLoginResponse {
-  access_token: string;
-  refresh_token: string;
+/** Camel-cased token bundle matching the backend's `TokenResponse` — never persisted by the web client. */
+export interface TokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
+  language: "en" | "fr";
 }
+
+export interface AdminOtpChallenge {
+  otpRequired: true;
+  otpChallengeId: string;
+  method: "email" | "totp";
+}
+
+export interface AdminLoginSuccess {
+  admin: AdminProfile;
+  tokens: TokenResponse | null;
+}
+
+/** `POST /admins/login` (and the `verify-otp` result): either an OTP challenge or a completed login. */
+export type AdminLoginResponse = AdminOtpChallenge | AdminLoginSuccess;
 
 export interface PermissionGroupPermission {
   key?: string;
@@ -104,11 +130,6 @@ export interface DecideElevationResponse {
 export interface SubmitElevationRequestPayload {
   requestedPermissionGroups: string[];
   reason: string;
-}
-
-export interface AdminRefreshResponse {
-  access_token: string;
-  refresh_token: string;
 }
 
 export interface SessionRevokeResponse {

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getAuthState } from "@/lib/api/auth-storage";
+import { hasAuthHint } from "@/lib/api/auth-storage";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminRoute, resolveFirstAllowedAdminRoute } from "@/lib/admin-access";
 import { AdminLoadingState } from "@/components/AdminLoadingState";
@@ -10,11 +10,11 @@ import { AdminLoadingState } from "@/components/AdminLoadingState";
 export function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const auth = getAuthState();
+  const hasHint = hasAuthHint();
   const profileQuery = useAdminProfile();
 
   useEffect(() => {
-    if (!auth?.accessToken) {
+    if (!hasHint) {
       router.replace("/admin/login");
       return;
     }
@@ -27,9 +27,9 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
     if (profileQuery.data && pathname && !canAccessAdminRoute(pathname, profileQuery.data)) {
       router.replace(resolveFirstAllowedAdminRoute(profileQuery.data));
     }
-  }, [auth?.accessToken, pathname, profileQuery.data, profileQuery.isError, router]);
+  }, [hasHint, pathname, profileQuery.data, profileQuery.isError, router]);
 
-  if (!auth?.accessToken || profileQuery.isLoading) {
+  if (!hasHint || profileQuery.isLoading) {
     return <AdminLoadingState label="Loading admin session..." />;
   }
 

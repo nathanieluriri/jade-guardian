@@ -1,13 +1,14 @@
-import { clearAuthState, getAuthState, setAuthState } from "@/lib/api/auth-storage";
-import type { AdminRefreshResponse, ApiEnvelope, ApiError } from "@/lib/api/types";
+import { clearAuthHint } from "@/lib/api/auth-storage";
+import type { ApiEnvelope, ApiError } from "@/lib/api/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "");
+// Requests are always same-origin, relative `/api/...` paths: the Next rewrite
+// in next.config.mjs proxies them to the real backend so the admin_access /
+// admin_refresh httpOnly cookies stay first-party (SameSite=Lax survives).
+// See the "Cookie transport decision" in the phase plan — never point this at
+// a cross-origin absolute URL.
+const API_BASE_URL = "";
 
-if (!API_BASE_URL) {
-  console.warn("NEXT_PUBLIC_API_BASE_URL is not set");
-}
-
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
 function normalizeRequestId(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
@@ -47,38 +48,26 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const auth = getAuthState();
-  if (!auth) return null;
-
+/**
+ * Rotates the session via the httpOnly `admin_refresh` cookie. No request
+ * body and no token reading: the cookie carries the refresh token, and the
+ * backend re-sets both cookies on success. Single-flight so concurrent 401s
+ * only trigger one refresh call.
+ */
+async function refreshAccessToken(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const response = await fetch(`${API_BASE_URL}/v1/admins/refresh`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/admins/refresh`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ refresh_token: auth.refreshToken }),
+        credentials: "include",
       });
 
       if (!response.ok) {
-        clearAuthState();
-        return null;
+        clearAuthHint();
+        return false;
       }
 
-      const payload = (await response.json()) as ApiEnvelope<AdminRefreshResponse>;
-      const nextState = {
-        accessToken: payload.data?.access_token,
-        refreshToken: payload.data?.refresh_token || auth.refreshToken,
-      };
-
-      if (!nextState.accessToken || !nextState.refreshToken) {
-        clearAuthState();
-        return null;
-      }
-
-      setAuthState(nextState);
-      return nextState.accessToken;
+      return true;
     })().finally(() => {
       refreshPromise = null;
     });
@@ -99,21 +88,15 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  if (auth) {
-    const token = getAuthState()?.accessToken;
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}/api${path}`, {
     ...init,
     headers,
+    credentials: "include",
   });
 
   if ((response.status === 401 || response.status === 403) && auth && retryOnUnauthorized) {
-    const refreshedToken = await refreshAccessToken();
-    if (refreshedToken) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
       return apiRequest<T>(path, init, { auth, retryOnUnauthorized: false });
     }
   }
@@ -121,7 +104,7 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const error = await parseError(response);
     if (auth && (error.status === 401 || error.code === "AUTH_ROLE_MISMATCH")) {
-      clearAuthState();
+      clearAuthHint();
     }
     throw error;
   }

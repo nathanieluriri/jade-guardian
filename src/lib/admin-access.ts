@@ -170,8 +170,28 @@ function pathMatches(permissionPath: string, requiredPath: string): boolean {
   return true;
 }
 
+type RawPermissionEntry = string | { key?: string; path?: string; methods?: string[] };
+
+function getRawPermissionEntries(profile?: AdminProfile | null): RawPermissionEntry[] {
+  const container = profile?.permissionList;
+  if (!container) return [];
+  return Array.isArray(container) ? container : container.permissions || [];
+}
+
+function isWildcardPermissionEntry(entry: RawPermissionEntry): boolean {
+  if (typeof entry === "string") return entry.trim() === "*";
+  return entry.key?.trim() === "*" || entry.path?.trim() === "*";
+}
+
+/** Super admins and the wildcard `"*"` permission bypass every per-route/action check. */
+function hasFullAccess(profile?: AdminProfile | null): boolean {
+  if (!profile) return false;
+  if (profile.isSuperAdmin === true) return true;
+  return getRawPermissionEntries(profile).some(isWildcardPermissionEntry);
+}
+
 function getProfilePermissions(profile?: AdminProfile | null): ProfilePermissionEntry[] {
-  const permissions = profile?.permissionList?.permissions || [];
+  const permissions = getRawPermissionEntries(profile);
   return permissions
     .map((permission) => {
       if (typeof permission === "string") {
@@ -208,6 +228,7 @@ function hasPermissionRequirement(permissionEntries: ProfilePermissionEntry[], r
 }
 
 export function canAccessAdminAction(requirement: PermissionRequirement, profile?: AdminProfile | null): boolean {
+  if (hasFullAccess(profile)) return true;
   const permissionEntries = getProfilePermissions(profile);
   return hasPermissionRequirement(permissionEntries, requirement);
 }
@@ -219,6 +240,7 @@ export function isAlwaysAllowedAdminRoute(pathname: string): boolean {
 export function canAccessAdminRoute(pathname: string, profile?: AdminProfile | null): boolean {
   const path = normalizePath(pathname);
   if (isAlwaysAllowedAdminRoute(path)) return true;
+  if (hasFullAccess(profile)) return true;
 
   const requirements = ADMIN_ROUTE_REQUIREMENTS[path];
   if (!requirements || requirements.length === 0) return false;
