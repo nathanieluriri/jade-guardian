@@ -65,7 +65,7 @@ export function AuthScreenShell({ title, subtitle, children, aside }: AuthScreen
             data-testid="auth-trust-footer"
             className="flex items-center gap-2 text-[11px] text-muted-foreground"
           >
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary-strong" aria-hidden="true" />
             <span>Protected by Cleanm. Admin activity is monitored and logged.</span>
           </p>
         </div>

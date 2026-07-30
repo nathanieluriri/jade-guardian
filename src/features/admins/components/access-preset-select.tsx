@@ -54,7 +54,8 @@ function AccessPresetOption({ preset }: { preset: AccessPresetSummary }) {
         <span className="font-medium">{preset.label}</span>
       </SelectPrimitive.ItemText>
       <span className="text-xs text-muted-foreground">{preset.description}</span>
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
+      {/* Was `text-muted-foreground/80`, which fell to 3.51:1 on the popover. */}
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
         {preset.permissionCount} permission{preset.permissionCount === 1 ? "" : "s"}
       </span>
     </SelectPrimitive.Item>

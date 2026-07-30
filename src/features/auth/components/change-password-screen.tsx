@@ -81,7 +81,7 @@ export function ChangePasswordScreen() {
         <button
           type="button"
           onClick={() => void logout()}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
           Sign out instead
@@ -89,7 +89,7 @@ export function ChangePasswordScreen() {
       }
     >
       <div className="mb-6 flex items-start gap-3 rounded-xl border border-border/60 bg-secondary/60 px-4 py-3">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-strong" aria-hidden="true" />
         <p className="text-xs text-muted-foreground">
           A temporary password from an invite stops working the moment this succeeds
           {accountEmail ? (

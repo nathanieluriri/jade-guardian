@@ -22,6 +22,10 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          // Brand green readable as *text* on a light surface — `--primary`
+          // itself only clears 2.3:1 against white. Same role `destructive-strong`
+          // plays for error copy.
+          strong: "hsl(var(--primary-strong))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -69,6 +73,16 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+          // `index.css` has always defined these four, but they were never
+          // mapped here — so `bg-sidebar-active`, `text-sidebar-active-foreground`
+          // and `text-sidebar-muted` (all used by `AdminSidebar`) generated no CSS
+          // at all: the nav tooltips had a transparent background and the
+          // "MAIN MENU" label fell back to the page's near-black foreground on
+          // dark green. Both were unreadable.
+          active: "hsl(var(--sidebar-active))",
+          "active-foreground": "hsl(var(--sidebar-active-foreground))",
+          muted: "hsl(var(--sidebar-muted))",
+          "group-border": "hsl(var(--sidebar-group-border))",
         },
         emerald: {
           50: "hsl(var(--emerald-50))",
@@ -80,6 +94,28 @@ export default {
           600: "hsl(var(--emerald-600))",
           700: "hsl(var(--emerald-700))",
         },
+      },
+      /**
+       * Named layer scale. Every global overlay picks its layer from here
+       * instead of inventing a number, so "what sits on top of what" is a
+       * property of the design system rather than of portal insertion order.
+       *
+       * The ordering is deliberate: `popup` sits **above** `modal` because
+       * Radix portals every floating layer as a sibling of `document.body`.
+       * A `Select`/`Popover`/`Tooltip` opened from inside a dialog therefore
+       * has to out-rank the dialog itself or it renders behind it.
+       *
+       * Raw `z-<number>` utilities still exist; prefer these names for
+       * anything that escapes its parent's stacking context.
+       */
+      zIndex: {
+        base: "0",
+        sticky: "10",
+        dropdown: "20",
+        drawer: "30",
+        modal: "40",
+        popup: "50",
+        toast: "60",
       },
       borderRadius: {
         lg: "var(--radius)",

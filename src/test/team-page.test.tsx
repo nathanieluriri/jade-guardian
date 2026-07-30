@@ -285,7 +285,7 @@ describe("admin team page", () => {
     expect(screen.getByText("Payments, service credits and financial reports.")).toBeInTheDocument();
   });
 
-  it("PATCHes {preset} to the right admin from the per-row picker", async () => {
+  it("PATCHes {preset} to the right admin once the per-row change is confirmed", async () => {
     const fetchMock = stubRoutes(
       baseRoutes({
         "PATCH /api/v1/admins/a2/access-preset": [{ body: envelope({ ...GRACE, accessPreset: "finance_only" }) }],
@@ -299,10 +299,43 @@ describe("admin team page", () => {
       /^Finance/
     );
 
-    const patchCalls = callsTo(fetchMock, "PATCH /api/v1/admins/a2/access-preset");
-    await waitFor(() => expect(patchCalls).toHaveLength(1));
-    expect(bodyOf(patchCalls[0])).toEqual({ preset: "finance_only" });
+    // Task 8: picking a preset no longer PATCHes on its own — re-scoping someone
+    // else's account goes through the shared destructive confirm first.
+    const confirmDialog = await screen.findByTestId("confirm-dialog");
+    expect(confirmDialog).toHaveAttribute("data-tone", "destructive");
+    expect(within(confirmDialog).getByText(/Grace Hopper/)).toBeInTheDocument();
+    expect(callsTo(fetchMock, "PATCH /api/v1/admins/a2/access-preset")).toHaveLength(0);
+
+    await act(async () => {
+      fireEvent.click(within(confirmDialog).getByRole("button", { name: "Change preset" }));
+    });
+
+    await waitFor(() =>
+      expect(callsTo(fetchMock, "PATCH /api/v1/admins/a2/access-preset")).toHaveLength(1)
+    );
+    expect(bodyOf(callsTo(fetchMock, "PATCH /api/v1/admins/a2/access-preset")[0])).toEqual({
+      preset: "finance_only",
+    });
     await waitFor(() => expect(mockToastSuccess).toHaveBeenCalled());
+  });
+
+  it("sends nothing when a per-row preset change is refused", async () => {
+    const fetchMock = stubRoutes(baseRoutes());
+    renderPage();
+    await waitForRows();
+
+    await chooseOption(
+      screen.getByRole("combobox", { name: "Access preset for Grace Hopper" }),
+      /^Finance/
+    );
+
+    const confirmDialog = await screen.findByTestId("confirm-dialog");
+    await act(async () => {
+      fireEvent.click(within(confirmDialog).getByRole("button", { name: "Keep current preset" }));
+    });
+
+    await waitFor(() => expect(screen.queryByTestId("confirm-dialog")).not.toBeInTheDocument());
+    expect(callsTo(fetchMock, "PATCH /api/v1/admins/a2/access-preset")).toHaveLength(0);
   });
 
   it("bulk-assigns a preset and lists every skipped admin with its reason", async () => {

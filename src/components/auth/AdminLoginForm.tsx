@@ -107,7 +107,7 @@ export function AdminLoginForm() {
         >
           <div className="flex justify-center">
             <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20">
-              <KeyRound className="h-7 w-7 text-primary" aria-hidden="true" />
+              <KeyRound className="h-7 w-7 text-primary-strong" aria-hidden="true" />
             </span>
           </div>
 
@@ -161,7 +161,7 @@ export function AdminLoginForm() {
           <button
             type="button"
             onClick={backToCredentials}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm text-muted-foreground transition-colors hover:text-primary-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Back to sign-in
@@ -200,7 +200,7 @@ export function AdminLoginForm() {
                   href={forgotPasswordHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs font-medium text-primary transition-colors hover:text-emerald-600"
+                  className="text-xs font-medium text-primary-strong transition-colors hover:text-foreground"
                 >
                   Forgot password?
                 </a>

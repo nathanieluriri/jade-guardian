@@ -69,97 +69,310 @@ type SidebarLinkItem = {
   title: string;
   url: string;
   icon: typeof LayoutDashboard;
+  /**
+   * One line saying what the destination actually is. Surfaced in the nav
+   * tooltip and reused verbatim as the ⌘K subtitle (see `adminNavDescription`),
+   * so a label like "Sessions" or "Access Hub" doesn't have to carry the whole
+   * meaning on its own. Copy is drawn from each screen's own sub-heading rather
+   * than invented here.
+   */
+  description: string;
 };
 
 type SidebarGroupItem = {
   kind: "group";
   title: string;
   icon: typeof LayoutDashboard;
+  description: string;
   subItems: SidebarLinkItem[];
 };
 
 type SidebarMenuEntry = SidebarLinkItem | SidebarGroupItem;
 
 const menuItems: SidebarMenuEntry[] = [
-  { kind: "link", title: "Overview", url: "/admin/overview", icon: LayoutDashboard },
+  {
+    kind: "link",
+    title: "Overview",
+    url: "/admin/overview",
+    icon: LayoutDashboard,
+    description: "System-wide health, session and alert counters at a glance.",
+  },
   {
     kind: "group",
     title: "User Management",
     icon: Building2,
+    description: "Customer accounts, cleaner employees, and the admin team itself.",
     subItems: [
-      { kind: "link", title: "Users", url: "/admin/users", icon: Users },
-      { kind: "link", title: "Employees", url: "/admin/institutions/employees", icon: UserCheck },
-      { kind: "link", title: "Admin Team", url: "/admin/team", icon: UserCog },
+      {
+        kind: "link",
+        title: "Users",
+        url: "/admin/users",
+        icon: Users,
+        description: "Customer directory with KPI and trend cards from the reporting APIs.",
+      },
+      {
+        kind: "link",
+        title: "Employees",
+        url: "/admin/institutions/employees",
+        icon: UserCheck,
+        description: "Onboarding queue: review pending cleaner profiles and decide approval.",
+      },
+      {
+        kind: "link",
+        title: "Admin Team",
+        url: "/admin/team",
+        icon: UserCog,
+        description: "Invite admins, re-scope their access preset, and review 2FA posture.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Security",
     icon: Shield,
+    description: "Alerts, live sessions, the audit trail, and your own second factor.",
     subItems: [
-      { kind: "link", title: "Alerts", url: "/admin/security/alerts", icon: Bell },
-      { kind: "link", title: "Sessions", url: "/admin/security/sessions", icon: Monitor },
-      { kind: "link", title: "Audit Log", url: "/admin/security/audit", icon: FileSearch },
+      {
+        kind: "link",
+        title: "Alerts",
+        url: "/admin/security/alerts",
+        icon: Bell,
+        description: "Operational alert queue with bulk actions and investigation links.",
+      },
+      {
+        kind: "link",
+        title: "Sessions",
+        url: "/admin/security/sessions",
+        icon: Monitor,
+        description: "Session risk panel: active sessions and anomaly metrics.",
+      },
+      {
+        kind: "link",
+        title: "Audit Log",
+        url: "/admin/security/audit",
+        icon: FileSearch,
+        description: "Every admin action, with the request id attached.",
+      },
       // Self-service, so it is always in `allowedRoutes` — this group therefore
       // never disappears entirely, even for an admin with no monitoring access.
-      { kind: "link", title: "Account Security", url: SECURITY_SETTINGS_ROUTE, icon: ShieldCheck },
+      {
+        kind: "link",
+        title: "Account Security",
+        url: SECURITY_SETTINGS_ROUTE,
+        icon: ShieldCheck,
+        description: "Your own two-factor authentication and password controls.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Access Control",
     icon: Key,
+    description: "The permission catalog and the role templates built from it.",
     subItems: [
-      { kind: "link", title: "Permission Catalog", url: "/admin/permissions/catalog", icon: Key },
-      { kind: "link", title: "Role Templates", url: "/admin/permissions/templates", icon: Users },
+      {
+        kind: "link",
+        title: "Permission Catalog",
+        url: "/admin/permissions/catalog",
+        icon: Key,
+        description: "Every permission the backend recognises, by method and path.",
+      },
+      {
+        kind: "link",
+        title: "Role Templates",
+        url: "/admin/permissions/templates",
+        icon: Users,
+        description: "Named permission bundles, with policy lint warnings.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Access Requests",
     icon: LockKeyhole,
+    description: "Elevation requests and the permission groups they draw on.",
     subItems: [
-      { kind: "link", title: "Access Hub", url: "/admin/access", icon: LockKeyhole },
-      { kind: "link", title: "Permission Groups", url: "/admin/access/permission-groups", icon: Key },
-      { kind: "link", title: "Request Elevation", url: "/admin/access/request-elevation", icon: Send },
-      { kind: "link", title: "Access Requests", url: "/admin/access/requests", icon: ListChecks },
+      {
+        kind: "link",
+        title: "Access Hub",
+        url: "/admin/access",
+        icon: LockKeyhole,
+        description: "What your account can reach, and what to do if it can't reach enough.",
+      },
+      {
+        kind: "link",
+        title: "Permission Groups",
+        url: "/admin/access/permission-groups",
+        icon: Key,
+        description: "The groups that can be requested when submitting an elevation request.",
+      },
+      {
+        kind: "link",
+        title: "Request Elevation",
+        url: "/admin/access/request-elevation",
+        icon: Send,
+        description: "Select permission groups and submit your request for approval.",
+      },
+      {
+        kind: "link",
+        title: "Access Requests",
+        url: "/admin/access/requests",
+        icon: ListChecks,
+        description: "Review pending elevation requests and issue approval decisions.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Operations Core",
     icon: Wrench,
+    description: "Services, add-ons, pricing, coverage areas, and promo codes.",
     subItems: [
-      { kind: "link", title: "Service Definitions", url: "/admin/operations/service-definitions", icon: FileText },
-      { kind: "link", title: "Add-ons", url: "/admin/operations/add-ons", icon: Package },
-      { kind: "link", title: "Pricing Rules", url: "/admin/operations/pricing-rules", icon: LineChart },
-      { kind: "link", title: "Service Areas", url: "/admin/operations/service-areas", icon: MapPin },
-      { kind: "link", title: "Promo Codes", url: "/admin/operations/promo-codes", icon: Ticket },
+      {
+        kind: "link",
+        title: "Service Definitions",
+        url: "/admin/operations/service-definitions",
+        icon: FileText,
+        description: "Base cleaning services used by the booking and pricing flows.",
+      },
+      {
+        kind: "link",
+        title: "Add-ons",
+        url: "/admin/operations/add-ons",
+        icon: Package,
+        description: "Optional add-ons attached to bookings.",
+      },
+      {
+        kind: "link",
+        title: "Pricing Rules",
+        url: "/admin/operations/pricing-rules",
+        icon: LineChart,
+        description: "Conditional multipliers and rule priority for operational pricing.",
+      },
+      {
+        kind: "link",
+        title: "Service Areas",
+        url: "/admin/operations/service-areas",
+        icon: MapPin,
+        description: "Operational zone boundaries and covered zip codes.",
+      },
+      {
+        kind: "link",
+        title: "Promo Codes",
+        url: "/admin/operations/promo-codes",
+        icon: Ticket,
+        description: "Discount campaigns and redemption lifecycle controls.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Support Core",
     icon: LifeBuoy,
+    description: "Concierge bookings, chat, claims, credits, and payout corrections.",
     subItems: [
-      { kind: "link", title: "Concierge Bookings", url: "/admin/support/concierge-bookings", icon: LifeBuoy },
-      { kind: "link", title: "Chat Interventions", url: "/admin/support/chat-interventions", icon: MessageSquare },
-      { kind: "link", title: "Claim Reviews", url: "/admin/support/claim-reviews", icon: FileCheck },
-      { kind: "link", title: "Service Credits", url: "/admin/support/service-credits", icon: Coins },
-      { kind: "link", title: "Payout Adjustments", url: "/admin/support/payout-adjustments", icon: Wallet },
+      {
+        kind: "link",
+        title: "Concierge Bookings",
+        url: "/admin/support/concierge-bookings",
+        icon: LifeBuoy,
+        description: "Bookings placed on a customer's behalf by the support desk.",
+      },
+      {
+        kind: "link",
+        title: "Chat Interventions",
+        url: "/admin/support/chat-interventions",
+        icon: MessageSquare,
+        description: "Moderation, safety, and escalation actions in customer-cleaner chats.",
+      },
+      {
+        kind: "link",
+        title: "Claim Reviews",
+        url: "/admin/support/claim-reviews",
+        icon: FileCheck,
+        description: "Complaint and dispute claims, and their adjudication records.",
+      },
+      {
+        kind: "link",
+        title: "Service Credits",
+        url: "/admin/support/service-credits",
+        icon: Coins,
+        description: "Service credit ledger entries and customer credit adjustments.",
+      },
+      {
+        kind: "link",
+        title: "Payout Adjustments",
+        url: "/admin/support/payout-adjustments",
+        icon: Wallet,
+        description: "Manual cleaner payout correction records.",
+      },
     ],
   },
   {
     kind: "group",
     title: "Comms & Governance",
     icon: Radio,
+    description: "Announcements, cleaner tagging, and availability exceptions.",
     subItems: [
-      { kind: "link", title: "Broadcasts", url: "/admin/governance/broadcasts", icon: Megaphone },
-      { kind: "link", title: "Cleaner Tags", url: "/admin/governance/cleaner-tags", icon: Tags },
-      { kind: "link", title: "Availability Overrides", url: "/admin/governance/availability-overrides", icon: CalendarClock },
+      {
+        kind: "link",
+        title: "Broadcasts",
+        url: "/admin/governance/broadcasts",
+        icon: Megaphone,
+        description: "Platform-wide or targeted announcements and their dispatch state.",
+      },
+      {
+        kind: "link",
+        title: "Cleaner Tags",
+        url: "/admin/governance/cleaner-tags",
+        icon: Tags,
+        description: "Cleaner skill, equipment and certification tags, and their verification.",
+      },
+      {
+        kind: "link",
+        title: "Availability Overrides",
+        url: "/admin/governance/availability-overrides",
+        icon: CalendarClock,
+        description: "Temporary blocking and unblocking windows for cleaner availability.",
+      },
     ],
   },
 ];
+
+/**
+ * Flattened `url -> description` view of `menuItems`, so the ⌘K palette can
+ * label a destination with the same sentence its nav entry uses without keeping
+ * a second copy of the strings. Groups are excluded: they have no route.
+ */
+const NAV_DESCRIPTIONS_BY_URL: Record<string, string> = Object.fromEntries(
+  menuItems.flatMap((item) =>
+    item.kind === "link"
+      ? [[item.url, item.description] as const]
+      : item.subItems.map((subItem) => [subItem.url, subItem.description] as const)
+  )
+);
+
+/** `undefined` for a path the sidebar doesn't know about — callers just omit the subtitle. */
+export function adminNavDescription(url: string): string | undefined {
+  return NAV_DESCRIPTIONS_BY_URL[url];
+}
+
+/**
+ * Tooltip body shared by every nav row: the label, plus the one-line description
+ * under it. Collapsed, this is the only place the label exists at all; expanded,
+ * it is the only place the description does.
+ */
+function NavTooltip({ title, description }: { title: string; description: string }) {
+  return (
+    <TooltipContent
+      side="right"
+      className="max-w-[15rem] border-0 bg-sidebar-active text-sidebar-active-foreground"
+    >
+      <p className="font-medium">{title}</p>
+      <p className="mt-0.5 text-xs text-sidebar-muted">{description}</p>
+    </TooltipContent>
+  );
+}
 
 export function AdminSidebar() {
   const { state, toggleSidebar } = useSidebar();
@@ -279,7 +492,7 @@ export function AdminSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0" style={{ borderRight: "1px solid hsl(var(--sidebar-border))" }}>
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="px-4 py-5 flex flex-row items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1">
@@ -301,7 +514,7 @@ export function AdminSidebar() {
         )}
       </SidebarHeader>
 
-      <SidebarSeparator className="bg-[hsl(var(--sidebar-group-border))] opacity-50 mb-2 mx-0" />
+      <SidebarSeparator className="bg-sidebar-group-border opacity-50 mb-2 mx-0" />
 
       <SidebarContent className="px-3 scrollbar-thin pb-4">
         {!collapsed && (
@@ -320,7 +533,9 @@ export function AdminSidebar() {
 
             return (
               <SidebarMenuItem key={item.title} className="flex flex-col">
-                <Tooltip delayDuration={0}>
+                {/* Instant when collapsed (the tooltip *is* the label); a beat
+                    slower when expanded, where it only adds the description. */}
+                <Tooltip delayDuration={collapsed ? 0 : 400}>
                   <TooltipTrigger asChild>
                     {hasSub ? (
                       <button
@@ -368,11 +583,7 @@ export function AdminSidebar() {
                       </SidebarMenuButton>
                     )}
                   </TooltipTrigger>
-                  {collapsed && (
-                    <TooltipContent side="right" className="bg-sidebar-active text-sidebar-active-foreground border-0 font-medium">
-                      {item.title}
-                    </TooltipContent>
-                  )}
+                  <NavTooltip title={item.title} description={item.description} />
                 </Tooltip>
 
                 {/* Sub-items */}
@@ -390,42 +601,45 @@ export function AdminSidebar() {
                           {item.subItems.map((sub) => {
                             const isSubActive = pathname === sub.url;
                             return (
-                              <Link
-                                key={sub.title}
-                                href={sub.url}
-                                className={cn(
-                                  "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] font-medium transition-colors duration-200 outline-none",
-                                  "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
+                              <Tooltip key={sub.title} delayDuration={400}>
+                                <TooltipTrigger asChild>
+                                  <Link
+                                    href={sub.url}
+                                    className={cn(
+                                      "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] font-medium transition-colors duration-200 outline-none",
+                                      "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
 
-                                  isSubActive && "bg-sidebar-primary/50 text-white",
-                                  pendingNavigationHref === sub.url && "opacity-80 pointer-events-none"
-                                )}
-                                onClick={() => setPendingNavigationHref(sub.url)}
-                              >
-                                <sub.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.5} />
-                                <span className="flex-1">{sub.title}</span>
-                                {/* uncomment and adjust style accordingly {isSubActive && <span className="h-1 w-15 rounded-full bg-sidebar-primary shrink-0" />} */}
-                                {pendingNavigationHref === sub.url && (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                )}
-                                {sub.url === "/admin/security/alerts" && alertAttentionCount > 0 && (
-                                  <Badge
-                                    variant="destructive"
-                                    className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data bg-red-500 hover:bg-red-600 text-white border-0"
+                                      isSubActive && "bg-sidebar-primary/50 text-white",
+                                      pendingNavigationHref === sub.url && "opacity-80 pointer-events-none"
+                                    )}
+                                    onClick={() => setPendingNavigationHref(sub.url)}
                                   >
-                                    {alertAttentionCount > 99 ? "99+" : alertAttentionCount}
-                                  </Badge>
-                                )}
-                                {(sub.url === "/admin/access/request-elevation" || sub.url === "/admin/access/requests") &&
-                                  pendingElevationCount > 0 && (
-                                    <Badge
-                                      variant="warning"
-                                      className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data"
-                                    >
-                                      {pendingElevationCount > 99 ? "99+" : pendingElevationCount}
-                                    </Badge>
-                                  )}
-                              </Link>
+                                    <sub.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.5} />
+                                    <span className="flex-1">{sub.title}</span>
+                                    {pendingNavigationHref === sub.url && (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    )}
+                                    {sub.url === "/admin/security/alerts" && alertAttentionCount > 0 && (
+                                      <Badge
+                                        variant="destructive"
+                                        className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data"
+                                      >
+                                        {alertAttentionCount > 99 ? "99+" : alertAttentionCount}
+                                      </Badge>
+                                    )}
+                                    {(sub.url === "/admin/access/request-elevation" || sub.url === "/admin/access/requests") &&
+                                      pendingElevationCount > 0 && (
+                                        <Badge
+                                          variant="warning"
+                                          className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data"
+                                        >
+                                          {pendingElevationCount > 99 ? "99+" : pendingElevationCount}
+                                        </Badge>
+                                      )}
+                                  </Link>
+                                </TooltipTrigger>
+                                <NavTooltip title={sub.title} description={sub.description} />
+                              </Tooltip>
                             );
                           })}
                         </div>
@@ -439,10 +653,14 @@ export function AdminSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="mt-auto border-t border-[hsl(var(--sidebar-border))] p-4">
+      <SidebarFooter className="mt-auto border-t border-sidebar-border p-4">
         <div className={cn("flex items-center gap-3 rounded-md mb-4", !collapsed && "")}>
-          <Avatar className="h-10 w-10 shrink-0 bg-[#6d798a]">
-            <AvatarFallback className="bg-[#6d798a] text-white text-sm font-semibold">{initials}</AvatarFallback>
+          {/* Was a hard-coded slate hex, which had no dark-theme answer. The
+              sidebar's own accent pair is theme-aware and already contrast-checked. */}
+          <Avatar className="h-10 w-10 shrink-0 bg-sidebar-accent">
+            <AvatarFallback className="bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground">
+              {initials}
+            </AvatarFallback>
           </Avatar>
           {!collapsed && (
             <div className="flex flex-col min-w-0">

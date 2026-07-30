@@ -45,7 +45,7 @@ function FieldFrame({
         {labelAction}
       </div>
       <div className="group relative">
-        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground transition-colors group-focus-within:text-primary">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground transition-colors group-focus-within:text-primary-strong">
           <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
         </span>
         {children}
@@ -126,7 +126,7 @@ export const AuthPasswordField = React.forwardRef<HTMLInputElement, AuthPassword
             type="button"
             onClick={() => setRevealed((current) => !current)}
             aria-label={`${revealed ? "Hide" : "Show"} ${revealLabel}`}
-            className="absolute inset-y-0 right-0 flex items-center rounded-r-xl pr-3.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:text-primary focus-visible:outline-none"
+            className="absolute inset-y-0 right-0 flex items-center rounded-r-xl pr-3.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:text-primary-strong focus-visible:outline-none"
           >
             {revealed ? (
               <EyeOff className="h-[18px] w-[18px]" aria-hidden="true" />

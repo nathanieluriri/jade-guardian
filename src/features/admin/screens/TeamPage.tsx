@@ -23,6 +23,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useConfirm } from "@/components/recipes/confirm-dialog";
 import type { AccessPresetBulkResult, AdminProfile } from "@/lib/api/types";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction } from "@/lib/admin-access";
@@ -54,6 +55,7 @@ function resolveDisplayName(admin: AdminProfile): string {
 
 export default function TeamPage() {
   const profileQuery = useAdminProfile();
+  const { confirm, confirmDialog } = useConfirm();
   const [skip, setSkip] = useState(0);
   const [limit] = useState(20);
   const [search, setSearch] = useState("");
@@ -121,6 +123,27 @@ export default function TeamPage() {
     setSelectedIds((prev) =>
       checked ? [...new Set([...prev, ...visibleIds])] : prev.filter((id) => !visibleIds.includes(id))
     );
+  };
+
+  /**
+   * The row picker used to fire the PATCH on selection, which made a one-click
+   * re-scope of someone else's account indistinguishable from browsing the list.
+   * The backend refuses the genuinely dangerous cases, but a preset swap still
+   * revokes whatever the old preset granted and the new one doesn't, so it gets a
+   * confirm step. The bulk bar already has its own explicit apply button.
+   */
+  const changeRowPreset = async (adminId: string, preset: string, displayName: string) => {
+    const label = presetLabel(preset);
+    const confirmed = await confirm({
+      title: `Change ${displayName} to “${label}”?`,
+      description:
+        "Their permissions are replaced by exactly that preset — anything their current preset allows and this one doesn't is revoked on their next request.",
+      confirmLabel: "Change preset",
+      cancelLabel: "Keep current preset",
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    setPresetMutation.mutate({ adminId, preset, label, name: displayName });
   };
 
   const applyBulkPreset = async () => {
@@ -337,12 +360,7 @@ export default function TeamPage() {
                             size="sm"
                             disabled={setPresetMutation.isPending}
                             onValueChange={(preset) =>
-                              setPresetMutation.mutate({
-                                adminId,
-                                preset,
-                                label: presetLabel(preset),
-                                name: displayName,
-                              })
+                              void changeRowPreset(adminId, preset, displayName)
                             }
                           />
                         )}
@@ -434,6 +452,8 @@ export default function TeamPage() {
           </div>
         </div>
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

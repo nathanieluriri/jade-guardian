@@ -97,7 +97,7 @@ function RegenerateBackupCodesDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-primary" aria-hidden="true" />
+            <RefreshCw className="h-4 w-4 text-primary-strong" aria-hidden="true" />
             Regenerate backup codes
           </DialogTitle>
           <DialogDescription>

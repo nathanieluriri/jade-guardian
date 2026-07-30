@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAlerts, listElevationRequests } from "@/lib/api/admin-api";
 import { Badge } from "@/components/ui/badge";
 import { useAdminAccess } from "@/hooks/use-admin-access";
+import { adminNavDescription } from "@/components/AdminSidebar";
 
 function formatRelativeTime(epochSeconds: number) {
   const delta = Math.round((epochSeconds * 1000 - Date.now()) / 1000);
@@ -50,6 +51,9 @@ export function CommandBar() {
   const unreadCount = useMemo(() => alerts.filter((item) => !item.is_read).length, [alerts]);
   const unackCount = useMemo(() => alerts.filter((item) => !item.ack_owner_id).length, [alerts]);
   const pendingElevationCount = pendingElevationQuery.data?.length || 0;
+  // Subtitles are not written here: they come from the sidebar's own nav model
+  // via `adminNavDescription`, so the palette and the sidebar can never describe
+  // the same destination two different ways.
   const quickNavigationItems = useMemo(
     () =>
       [
@@ -66,7 +70,9 @@ export function CommandBar() {
         { label: "Availability Overrides", path: "/admin/governance/availability-overrides", icon: Shield },
         { label: "Access Hub", path: "/admin/access", icon: Shield },
         { label: "Access Requests", path: "/admin/access/requests", icon: Shield },
-      ].filter((item) => allowedRoutes.has(item.path)),
+      ]
+        .filter((item) => allowedRoutes.has(item.path))
+        .map((item) => ({ ...item, description: adminNavDescription(item.path) })),
     [allowedRoutes]
   );
 
@@ -142,7 +148,7 @@ export function CommandBar() {
                     </div>
                     <div className="ml-2 flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
                       {pendingPath === "/admin/security/alerts" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      {!alert.is_read && <Dot className="h-5 w-5 text-sky-600" />}
+                      {!alert.is_read && <Dot className="h-5 w-5 text-info" />}
                       {!alert.ack_owner_id && <span className="font-mono-data">unack</span>}
                       <span title={new Date(alert.last_fired_at * 1000).toISOString()}>{formatRelativeTime(alert.last_fired_at)}</span>
                     </div>
@@ -157,10 +163,18 @@ export function CommandBar() {
             {quickNavigationItems.map((item) => (
               <CommandItem
                 key={item.path}
+                // cmdk matches on the item's text content, so the subtitle also
+                // widens what a search term can hit — "authenticator" finds
+                // Account Security even though the label never says it.
                 onSelect={() => handleNavigate(item.path)}
               >
-                <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>{item.label}</span>
+                <item.icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{item.label}</span>
+                  {item.description && (
+                    <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                  )}
+                </div>
                 {item.path === "/admin/access/requests" && pendingElevationCount > 0 && (
                   <Badge variant="warning" className="ml-auto mr-1 h-5 min-w-5 px-1.5 text-[10px] font-mono-data">
                     {pendingElevationCount > 99 ? "99+" : pendingElevationCount}

@@ -172,7 +172,7 @@ export function BrandedSplash({ label }: { label?: string }) {
             )}
           >
             <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <Lightbulb className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              <Lightbulb className="h-3.5 w-3.5 text-primary-strong" aria-hidden="true" />
               Tip
             </div>
             <div key={tipIndex} className={cn("mt-1", motion("branded-splash-tip-content"))}>
