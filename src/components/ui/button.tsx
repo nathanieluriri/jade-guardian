@@ -9,7 +9,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // Hover darkens to a *solid* token rather than fading `--primary` to
+        // 90%: an alpha fade blends the fill toward the light surface behind
+        // it, which dropped the white label from 4.79:1 to 4.03:1 on hover.
+        // `primary-strong` is already the darker member of the pair (and the
+        // lighter one in dark mode), so this reads correctly in both themes.
+        default: "bg-primary text-primary-foreground hover:bg-primary-strong",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",

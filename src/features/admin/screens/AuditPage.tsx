@@ -11,7 +11,6 @@ import {
   getAuditExportJob,
   listAuditHistory,
 } from "@/lib/api/admin-api";
-import { getAuthState } from "@/lib/api/auth-storage";
 import type { AuditEvent, AuditExportJob, AuditHistoryFilters } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,14 +173,14 @@ export default function AuditPage() {
   const downloadMutation = useMutation({
     mutationFn: async () => {
       if (!activeJob?.export_id) throw new Error("No export job available");
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/+$/, "");
       const relative = activeJob.download_url || getAuditExportDownloadUrl(activeJob.export_id);
-      const url = relative.startsWith("http") ? relative : `${baseUrl}${relative}`;
-      const token = getAuthState()?.accessToken || "";
+      // Relative paths go through the same-origin /api rewrite so the
+      // httpOnly admin session cookies are sent automatically; no token.
+      const url = relative.startsWith("http") ? relative : `/api${relative}`;
 
       const response = await fetch(url, {
         method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
 
       if (response.status === 409) throw new Error("Export is not ready yet.");

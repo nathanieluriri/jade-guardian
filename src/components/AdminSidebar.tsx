@@ -1,29 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Shield,
   LayoutDashboard,
   Bell,
+  Shield,
   Monitor,
   FileSearch,
   Key,
   Users,
   UserCheck,
-  ChevronRight,
-  Settings,
-  HelpCircle,
+  ChevronLeft,
+  Building2,
+  UserCog,
+  Loader2,
+  Moon,
+  Sun,
+  LogOut,
+  ChevronDown,
+  LockKeyhole,
+  Send,
+  ListChecks,
+  Wrench,
+  FileText,
+  Package,
+  LineChart,
+  MapPin,
+  Ticket,
+  LifeBuoy,
+  MessageSquare,
+  FileCheck,
+  Coins,
+  Wallet,
+  Radio,
+  Megaphone,
+  Tags,
+  CalendarClock,
+  ShieldCheck
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -35,182 +58,665 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { fetchAlerts } from "@/lib/api/admin-api";
+import { fetchAlerts, listElevationRequests } from "@/lib/api/admin-api";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAdminAccess } from "@/hooks/use-admin-access";
+import { useAdminLogout } from "@/hooks/use-admin-auth";
+import { SECURITY_SETTINGS_ROUTE } from "@/lib/admin-access";
 
-const sections = [
+type SidebarLinkItem = {
+  kind: "link";
+  title: string;
+  url: string;
+  icon: typeof LayoutDashboard;
+  /**
+   * One line saying what the destination actually is. Surfaced in the nav
+   * tooltip and reused verbatim as the ⌘K subtitle (see `adminNavDescription`),
+   * so a label like "Sessions" or "Access Hub" doesn't have to carry the whole
+   * meaning on its own. Copy is drawn from each screen's own sub-heading rather
+   * than invented here.
+   */
+  description: string;
+};
+
+type SidebarGroupItem = {
+  kind: "group";
+  title: string;
+  icon: typeof LayoutDashboard;
+  description: string;
+  subItems: SidebarLinkItem[];
+};
+
+type SidebarMenuEntry = SidebarLinkItem | SidebarGroupItem;
+
+const menuItems: SidebarMenuEntry[] = [
   {
-    label: "Monitoring",
-    items: [
-      { title: "Overview", url: "/admin/overview", icon: LayoutDashboard },
-      { title: "Alerts", url: "/admin/security/alerts", icon: Bell },
-      { title: "Sessions", url: "/admin/security/sessions", icon: Monitor },
-      { title: "Audit Log", url: "/admin/security/audit", icon: FileSearch },
+    kind: "link",
+    title: "Overview",
+    url: "/admin/overview",
+    icon: LayoutDashboard,
+    description: "System-wide health, session and alert counters at a glance.",
+  },
+  {
+    kind: "group",
+    title: "User Management",
+    icon: Building2,
+    description: "Customer accounts, cleaner employees, and the admin team itself.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Users",
+        url: "/admin/users",
+        icon: Users,
+        description: "Customer directory with KPI and trend cards from the reporting APIs.",
+      },
+      {
+        kind: "link",
+        title: "Employees",
+        url: "/admin/institutions/employees",
+        icon: UserCheck,
+        description: "Onboarding queue: review pending cleaner profiles and decide approval.",
+      },
+      {
+        kind: "link",
+        title: "Admin Team",
+        url: "/admin/team",
+        icon: UserCog,
+        description: "Invite admins, re-scope their access preset, and review 2FA posture.",
+      },
     ],
   },
   {
-    label: "Governance",
-    items: [
-      { title: "Permission Catalog", url: "/admin/permissions/catalog", icon: Key },
-      { title: "Role Templates", url: "/admin/permissions/templates", icon: Users },
-      { title: "Team", url: "/admin/team", icon: Shield },
-      { title: "Users", url: "/admin/users", icon: Users },
+    kind: "group",
+    title: "Security",
+    icon: Shield,
+    description: "Alerts, live sessions, the audit trail, and your own second factor.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Alerts",
+        url: "/admin/security/alerts",
+        icon: Bell,
+        description: "Operational alert queue with bulk actions and investigation links.",
+      },
+      {
+        kind: "link",
+        title: "Sessions",
+        url: "/admin/security/sessions",
+        icon: Monitor,
+        description: "Session risk panel: active sessions and anomaly metrics.",
+      },
+      {
+        kind: "link",
+        title: "Audit Log",
+        url: "/admin/security/audit",
+        icon: FileSearch,
+        description: "Every admin action, with the request id attached.",
+      },
+      // Self-service, so it is always in `allowedRoutes` — this group therefore
+      // never disappears entirely, even for an admin with no monitoring access.
+      {
+        kind: "link",
+        title: "Account Security",
+        url: SECURITY_SETTINGS_ROUTE,
+        icon: ShieldCheck,
+        description: "Your own two-factor authentication and password controls.",
+      },
     ],
   },
   {
-    label: "Operations",
-    items: [{ title: "Cleaner Onboarding", url: "/admin/onboarding/cleaners", icon: UserCheck }],
+    kind: "group",
+    title: "Access Control",
+    icon: Key,
+    description: "The permission catalog and the role templates built from it.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Permission Catalog",
+        url: "/admin/permissions/catalog",
+        icon: Key,
+        description: "Every permission the backend recognises, by method and path.",
+      },
+      {
+        kind: "link",
+        title: "Role Templates",
+        url: "/admin/permissions/templates",
+        icon: Users,
+        description: "Named permission bundles, with policy lint warnings.",
+      },
+    ],
+  },
+  {
+    kind: "group",
+    title: "Access Requests",
+    icon: LockKeyhole,
+    description: "Elevation requests and the permission groups they draw on.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Access Hub",
+        url: "/admin/access",
+        icon: LockKeyhole,
+        description: "What your account can reach, and what to do if it can't reach enough.",
+      },
+      {
+        kind: "link",
+        title: "Permission Groups",
+        url: "/admin/access/permission-groups",
+        icon: Key,
+        description: "The groups that can be requested when submitting an elevation request.",
+      },
+      {
+        kind: "link",
+        title: "Request Elevation",
+        url: "/admin/access/request-elevation",
+        icon: Send,
+        description: "Select permission groups and submit your request for approval.",
+      },
+      {
+        kind: "link",
+        title: "Access Requests",
+        url: "/admin/access/requests",
+        icon: ListChecks,
+        description: "Review pending elevation requests and issue approval decisions.",
+      },
+    ],
+  },
+  {
+    kind: "group",
+    title: "Operations Core",
+    icon: Wrench,
+    description: "Services, add-ons, pricing, coverage areas, and promo codes.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Service Definitions",
+        url: "/admin/operations/service-definitions",
+        icon: FileText,
+        description: "Base cleaning services used by the booking and pricing flows.",
+      },
+      {
+        kind: "link",
+        title: "Add-ons",
+        url: "/admin/operations/add-ons",
+        icon: Package,
+        description: "Optional add-ons attached to bookings.",
+      },
+      {
+        kind: "link",
+        title: "Pricing Rules",
+        url: "/admin/operations/pricing-rules",
+        icon: LineChart,
+        description: "Conditional multipliers and rule priority for operational pricing.",
+      },
+      {
+        kind: "link",
+        title: "Service Areas",
+        url: "/admin/operations/service-areas",
+        icon: MapPin,
+        description: "Operational zone boundaries and covered zip codes.",
+      },
+      {
+        kind: "link",
+        title: "Promo Codes",
+        url: "/admin/operations/promo-codes",
+        icon: Ticket,
+        description: "Discount campaigns and redemption lifecycle controls.",
+      },
+    ],
+  },
+  {
+    kind: "group",
+    title: "Support Core",
+    icon: LifeBuoy,
+    description: "Concierge bookings, chat, claims, credits, and payout corrections.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Concierge Bookings",
+        url: "/admin/support/concierge-bookings",
+        icon: LifeBuoy,
+        description: "Bookings placed on a customer's behalf by the support desk.",
+      },
+      {
+        kind: "link",
+        title: "Chat Interventions",
+        url: "/admin/support/chat-interventions",
+        icon: MessageSquare,
+        description: "Moderation, safety, and escalation actions in customer-cleaner chats.",
+      },
+      {
+        kind: "link",
+        title: "Claim Reviews",
+        url: "/admin/support/claim-reviews",
+        icon: FileCheck,
+        description: "Complaint and dispute claims, and their adjudication records.",
+      },
+      {
+        kind: "link",
+        title: "Service Credits",
+        url: "/admin/support/service-credits",
+        icon: Coins,
+        description: "Service credit ledger entries and customer credit adjustments.",
+      },
+      {
+        kind: "link",
+        title: "Payout Adjustments",
+        url: "/admin/support/payout-adjustments",
+        icon: Wallet,
+        description: "Manual cleaner payout correction records.",
+      },
+    ],
+  },
+  {
+    kind: "group",
+    title: "Comms & Governance",
+    icon: Radio,
+    description: "Announcements, cleaner tagging, and availability exceptions.",
+    subItems: [
+      {
+        kind: "link",
+        title: "Broadcasts",
+        url: "/admin/governance/broadcasts",
+        icon: Megaphone,
+        description: "Platform-wide or targeted announcements and their dispatch state.",
+      },
+      {
+        kind: "link",
+        title: "Cleaner Tags",
+        url: "/admin/governance/cleaner-tags",
+        icon: Tags,
+        description: "Cleaner skill, equipment and certification tags, and their verification.",
+      },
+      {
+        kind: "link",
+        title: "Availability Overrides",
+        url: "/admin/governance/availability-overrides",
+        icon: CalendarClock,
+        description: "Temporary blocking and unblocking windows for cleaner availability.",
+      },
+    ],
   },
 ];
 
+/**
+ * Flattened `url -> description` view of `menuItems`, so the ⌘K palette can
+ * label a destination with the same sentence its nav entry uses without keeping
+ * a second copy of the strings. Groups are excluded: they have no route.
+ */
+const NAV_DESCRIPTIONS_BY_URL: Record<string, string> = Object.fromEntries(
+  menuItems.flatMap((item) =>
+    item.kind === "link"
+      ? [[item.url, item.description] as const]
+      : item.subItems.map((subItem) => [subItem.url, subItem.description] as const)
+  )
+);
+
+/** `undefined` for a path the sidebar doesn't know about — callers just omit the subtitle. */
+export function adminNavDescription(url: string): string | undefined {
+  return NAV_DESCRIPTIONS_BY_URL[url];
+}
+
+/**
+ * Tooltip body shared by every nav row: the label, plus the one-line description
+ * under it. Collapsed, this is the only place the label exists at all; expanded,
+ * it is the only place the description does.
+ */
+function NavTooltip({ title, description }: { title: string; description: string }) {
+  return (
+    <TooltipContent
+      side="right"
+      className="max-w-[15rem] border-0 bg-sidebar-active text-sidebar-active-foreground"
+    >
+      <p className="font-medium">{title}</p>
+      <p className="mt-0.5 text-xs text-sidebar-muted">{description}</p>
+    </TooltipContent>
+  );
+}
+
 export function AdminSidebar() {
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const { allowedRoutes, canAccessRoute, profileQuery } = useAdminAccess();
+  const logout = useAdminLogout();
+  const { resolvedTheme, setTheme } = useTheme();
   const alertsQuery = useQuery({
     queryKey: ["open-alert-attention-count"],
-    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, start: 0, stop: 99 }),
+    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, skip: 0, limit: 99 }),
     refetchInterval: 30_000,
+    enabled: canAccessRoute("/admin/security/alerts"),
+  });
+  const pendingElevationQuery = useQuery({
+    queryKey: ["pending-elevation-request-count"],
+    queryFn: () => listElevationRequests({ status: "PENDING", skip: 0, limit: 200 }),
+    refetchInterval: 30_000,
+    enabled: canAccessRoute("/admin/access/requests"),
   });
   const alertAttentionCount = alertsQuery.data?.length || 0;
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
-    Object.fromEntries(sections.map((s) => [s.label, true]))
+  const pendingElevationCount = pendingElevationQuery.data?.length || 0;
+  const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);
+  
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
+    "User Management": false,
+    Security: false,
+    "Access Control": false,
+    "Access Requests": false,
+    "Operations Core": false,
+    "Support Core": false,
+    "Comms & Governance": false,
+  });
+
+  // `AdminOut` sends `firstName`/`lastName`; there is no `full_name` on the
+  // wire, so the old fallback meant this always showed the email prefix.
+  const displayName = useMemo(() => {
+    const fullName = `${profileQuery.data?.firstName || ""} ${profileQuery.data?.lastName || ""}`.trim();
+    if (fullName) return fullName;
+    const email = profileQuery.data?.email?.trim();
+    if (email) return email.split("@")[0] || "Admin";
+    return "Admin";
+  }, [profileQuery.data?.email, profileQuery.data?.firstName, profileQuery.data?.lastName]);
+
+  const displayEmail = useMemo(() => {
+    const email = profileQuery.data?.email?.trim();
+    return email || "No email";
+  }, [profileQuery.data?.email]);
+
+  const initials = useMemo(() => {
+    const tokens = displayName.split(" ").filter(Boolean);
+    if (tokens.length >= 2) {
+      return `${tokens[0][0]}${tokens[1][0]}`.toUpperCase();
+    }
+    if (tokens.length === 1) {
+      return tokens[0].slice(0, 2).toUpperCase();
+    }
+    return "AD";
+  }, [displayName]);
+
+  const isDarkMode = resolvedTheme === "dark";
+  const themeLabel = isDarkMode ? "Light Mode" : "Dark Mode";
+  const handleToggleTheme = () => {
+    const nextTheme = isDarkMode ? "light" : "dark";
+    setTheme(nextTheme);
+    document.cookie = `theme=${nextTheme}; path=/; max-age=31536000; samesite=lax`;
+  };
+
+  const visibleMenuItems = useMemo(() => {
+    return menuItems
+      .map((item) => {
+        if (item.kind === "link") {
+          return allowedRoutes.has(item.url) ? item : null;
+        }
+        const visibleSubItems = item.subItems.filter((subItem) => allowedRoutes.has(subItem.url));
+        if (visibleSubItems.length === 0) return null;
+        return { ...item, subItems: visibleSubItems };
+      })
+      .filter((item): item is SidebarMenuEntry => item !== null);
+  }, [allowedRoutes]);
+
+  const visibleGroupTitles = useMemo(
+    () => visibleMenuItems.filter((item): item is SidebarGroupItem => item.kind === "group").map((item) => item.title),
+    [visibleMenuItems]
   );
 
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  const activeGroupTitle = useMemo(() => {
+    const activeGroup = visibleMenuItems.find(
+      (item): item is SidebarGroupItem => item.kind === "group" && item.subItems.some((subItem) => pathname === subItem.url)
+    );
+    return activeGroup?.title ?? null;
+  }, [pathname, visibleMenuItems]);
+
+  useEffect(() => {
+    setPendingNavigationHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (visibleGroupTitles.length === 0) return;
+    const nextState = visibleGroupTitles.reduce<Record<string, boolean>>((acc, title) => {
+      acc[title] = title === activeGroupTitle;
+      return acc;
+    }, {});
+    setExpandedItems(nextState);
+  }, [activeGroupTitle, visibleGroupTitles]);
+
+  const toggleItem = (title: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setExpandedItems((prev) => {
+      const next = visibleGroupTitles.reduce<Record<string, boolean>>((acc, groupTitle) => {
+        acc[groupTitle] = false;
+        return acc;
+      }, {});
+      next[title] = !prev[title];
+      return next;
+    });
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0" style={{ borderRight: "1px solid hsl(var(--sidebar-border))" }}>
-      <SidebarHeader className="px-4 py-5">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      <SidebarHeader className="px-4 py-5 flex flex-row items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <Shield className="h-[18px] w-[18px] text-primary-foreground" strokeWidth={2} />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1">
+            <Image
+              src="/company_logo.png"
+              alt="Cleanm logo"
+              width={32}
+              height={32}
+              className="h-8 w-8 object-contain"
+              priority
+            />
           </div>
-          {!collapsed && <span className="text-lg font-bold tracking-tight text-sidebar-foreground">Sentinel</span>}
+          {!collapsed && <span className="text-2xl font-bold tracking-tight text-white">Cleanm</span>}
         </div>
+        {!collapsed && (
+          <button onClick={toggleSidebar} className="text-white hover:bg-sidebar-accent p-1 rounded-md transition-colors">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
       </SidebarHeader>
 
-      <SidebarContent className="px-2 scrollbar-thin">
-        {sections.map((section, idx) => {
-          const isOpen = openGroups[section.label];
-          return (
-            <div key={section.label}>
-              {idx > 0 && <SidebarSeparator className="mx-3 my-1 bg-[hsl(var(--sidebar-group-border))]" />}
-              <SidebarGroup className="py-1">
-                {!collapsed && (
-                  <SidebarGroupLabel
-                    className="mb-1 cursor-pointer select-none px-3 text-[11px] uppercase tracking-[0.1em] font-semibold text-[hsl(var(--sidebar-muted))] hover:text-sidebar-foreground transition-colors"
-                    onClick={() => toggleGroup(section.label)}
-                  >
-                    <span className="flex-1">{section.label}</span>
-                    <ChevronRight className={cn("h-3 w-3 transition-transform duration-200", isOpen && "rotate-90")} />
-                  </SidebarGroupLabel>
-                )}
-                {(collapsed || isOpen) && (
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {section.items.map((item) => {
-                        const isActive = pathname === item.url;
-                        return (
-                          <SidebarMenuItem key={item.title}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <SidebarMenuButton asChild>
+      <SidebarSeparator className="bg-sidebar-group-border opacity-50 mb-2 mx-0" />
+
+      <SidebarContent className="px-3 scrollbar-thin pb-4">
+        {!collapsed && (
+          <div className="px-3 py-2 text-[11px] font-semibold text-sidebar-muted uppercase tracking-widest mb-1">
+            MAIN MENU
+          </div>
+        )}
+        
+        <SidebarMenu className="gap-1">
+          {visibleMenuItems.map((item) => {
+            const hasSub = item.kind === "group";
+            const isExpanded = !!expandedItems[item.title];
+            
+            // Determine if parent or any child is active
+            const isActive = item.kind === "link" ? pathname === item.url : item.subItems.some((subItem) => pathname === subItem.url);
+
+            return (
+              <SidebarMenuItem key={item.title} className="flex flex-col">
+                {/* Instant when collapsed (the tooltip *is* the label); a beat
+                    slower when expanded, where it only adds the description. */}
+                <Tooltip delayDuration={collapsed ? 0 : 400}>
+                  <TooltipTrigger asChild>
+                    {hasSub ? (
+                      <button
+                        onClick={(e) => toggleItem(item.title, e)}
+                        className={cn(
+                          "relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors duration-200 outline-none",
+                          "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
+                          isExpanded && "bg-sidebar-accent/20 text-white/80",
+                          isActive && "bg-sidebar-accent/50 text-white"
+                        )}
+                      >
+                        <item.icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.5} />
+                        {!collapsed && (
+                          <>
+                            <span className="flex-1 text-left">{item.title}</span>
+                            {isActive && <span className="h-2 w-2 rounded-full bg-sidebar-primary shrink-0" />}
+                            <ChevronDown 
+                              className={cn("h-4 w-4 shrink-0 transition-transform duration-200 text-sidebar-muted", isExpanded && "rotate-180")} 
+                            />
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <SidebarMenuButton asChild>
+                        <Link
+                          href={item.url}
+                          className={cn(
+                            "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors duration-200 outline-none",
+                            "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
+                            isActive && "bg-sidebar-accent/50 text-white",
+                            pendingNavigationHref === item.url && "opacity-80 pointer-events-none"
+                          )}
+                          onClick={() => setPendingNavigationHref(item.url || null)}
+                        >
+                          <item.icon className="h-[22px] w-[22px] shrink-0" strokeWidth={1.5} />
+                          {!collapsed && (
+                            <>
+                              <span>{item.title}</span>
+                              {pendingNavigationHref === item.url && (
+                                <Loader2 className="ml-auto h-4 w-4 animate-spin" />
+                              )}
+                            </>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    )}
+                  </TooltipTrigger>
+                  <NavTooltip title={item.title} description={item.description} />
+                </Tooltip>
+
+                {/* Sub-items */}
+                {hasSub && !collapsed && (
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="ml-[22px] mt-1 pl-[18px] border-l border-sidebar-border/60 flex flex-col gap-1 py-1">
+                          {item.subItems.map((sub) => {
+                            const isSubActive = pathname === sub.url;
+                            return (
+                              <Tooltip key={sub.title} delayDuration={400}>
+                                <TooltipTrigger asChild>
                                   <Link
-                                    href={item.url}
+                                    href={sub.url}
                                     className={cn(
-                                      "relative flex items-center gap-3 rounded-md px-3 py-2 text-[14px] font-medium transition-colors duration-150",
-                                      "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                                      isActive &&
-                                        "bg-[hsl(var(--sidebar-active))] text-[hsl(var(--sidebar-active-foreground))] hover:bg-[hsl(var(--sidebar-active))] hover:text-[hsl(var(--sidebar-active-foreground))]"
+                                      "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] font-medium transition-colors duration-200 outline-none",
+                                      "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
+
+                                      isSubActive && "bg-sidebar-primary/50 text-white",
+                                      pendingNavigationHref === sub.url && "opacity-80 pointer-events-none"
                                     )}
+                                    onClick={() => setPendingNavigationHref(sub.url)}
                                   >
-                                    {isActive && (
-                                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-[hsl(var(--sidebar-active-foreground))]" />
+                                    <sub.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.5} />
+                                    <span className="flex-1">{sub.title}</span>
+                                    {pendingNavigationHref === sub.url && (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     )}
-                                    <item.icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                                    {!collapsed && <span>{item.title}</span>}
-                                    {item.url === "/admin/security/alerts" && alertAttentionCount > 0 && (
+                                    {sub.url === "/admin/security/alerts" && alertAttentionCount > 0 && (
                                       <Badge
-                                        variant="high"
-                                        className={cn(
-                                          "ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data",
-                                          collapsed && "absolute -top-1 -right-1 ml-0"
-                                        )}
+                                        variant="destructive"
+                                        className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data"
                                       >
                                         {alertAttentionCount > 99 ? "99+" : alertAttentionCount}
                                       </Badge>
                                     )}
+                                    {(sub.url === "/admin/access/request-elevation" || sub.url === "/admin/access/requests") &&
+                                      pendingElevationCount > 0 && (
+                                        <Badge
+                                          variant="warning"
+                                          className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-mono-data"
+                                        >
+                                          {pendingElevationCount > 99 ? "99+" : pendingElevationCount}
+                                        </Badge>
+                                      )}
                                   </Link>
-                                </SidebarMenuButton>
-                              </TooltipTrigger>
-                              {collapsed && (
-                                <TooltipContent side="right" className="bg-[hsl(142,72%,29%)] text-[hsl(0,0%,100%)] border-0 text-xs font-medium px-3 py-1.5">
-                                  {item.title}
-                                </TooltipContent>
-                              )}
-                            </Tooltip>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
+                                </TooltipTrigger>
+                                <NavTooltip title={sub.title} description={sub.description} />
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 )}
-              </SidebarGroup>
-            </div>
-          );
-        })}
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="mt-auto border-t border-[hsl(var(--sidebar-border))] px-3 py-3">
+      <SidebarFooter className="mt-auto border-t border-sidebar-border p-4">
+        <div className={cn("flex items-center gap-3 rounded-md mb-4", !collapsed && "")}>
+          {/* Was a hard-coded slate hex, which had no dark-theme answer. The
+              sidebar's own accent pair is theme-aware and already contrast-checked. */}
+          <Avatar className="h-10 w-10 shrink-0 bg-sidebar-accent">
+            <AvatarFallback className="bg-sidebar-accent text-sm font-semibold text-sidebar-accent-foreground">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          {!collapsed && (
+            <div className="flex flex-col min-w-0">
+              <span className="text-[14px] font-semibold text-white truncate">{displayName}</span>
+              <span className="text-[12px] text-sidebar-foreground truncate">{displayEmail}</span>
+            </div>
+          )}
+        </div>
+
         {!collapsed ? (
-          <div className="flex items-center gap-1 mb-3">
-            <button className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
-              <Settings className="h-4 w-4" strokeWidth={1.75} />
-              <span>Settings</span>
+          <div className="flex flex-col gap-1 w-full">
+            <button
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors duration-200 outline-none"
+              onClick={handleToggleTheme}
+            >
+              {isDarkMode ? <Sun className="h-5 w-5 shrink-0" strokeWidth={1.5} /> : <Moon className="h-5 w-5 shrink-0" strokeWidth={1.5} />}
+              <span>{themeLabel}</span>
             </button>
-            <button className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
-              <HelpCircle className="h-4 w-4" strokeWidth={1.75} />
-              <span>Help</span>
+            <button
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors duration-200 outline-none"
+              onClick={() => void logout()}
+            >
+              <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+              <span>Log Out</span>
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 mb-3">
-            <Tooltip>
+          <div className="flex flex-col items-center gap-2">
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
-                <button className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
-                  <Settings className="h-5 w-5" strokeWidth={1.75} />
+                <button
+                  className="rounded-xl p-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors duration-200 outline-none"
+                  onClick={handleToggleTheme}
+                >
+                  {isDarkMode ? <Sun className="h-5 w-5 shrink-0" strokeWidth={1.5} /> : <Moon className="h-5 w-5 shrink-0" strokeWidth={1.5} />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="bg-[hsl(142,72%,29%)] text-[hsl(0,0%,100%)] border-0 text-xs font-medium px-3 py-1.5">
-                Settings
+              <TooltipContent side="right" className="bg-sidebar-active text-sidebar-active-foreground border-0 font-medium">
+                {themeLabel}
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
-                <button className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
-                  <HelpCircle className="h-5 w-5" strokeWidth={1.75} />
+                <button
+                  className="rounded-xl p-2.5 text-sidebar-foreground hover:bg-sidebar-accent hover:text-white transition-colors duration-200 outline-none"
+                  onClick={() => void logout()}
+                >
+                  <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="bg-[hsl(142,72%,29%)] text-[hsl(0,0%,100%)] border-0 text-xs font-medium px-3 py-1.5">
-                Help
+              <TooltipContent side="right" className="bg-sidebar-active text-sidebar-active-foreground border-0 font-medium">
+                Log Out
               </TooltipContent>
             </Tooltip>
           </div>
         )}
-
-        <div className={cn("flex items-center gap-3 rounded-md", !collapsed && "px-2 py-2")}>
-          <Avatar className="h-8 w-8 shrink-0 border border-[hsl(var(--sidebar-border))]">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-semibold">SA</AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-[13px] font-semibold text-sidebar-foreground truncate">Sarah Admin</span>
-              <span className="text-[11px] text-[hsl(var(--sidebar-muted))] truncate">sarah@sentinel.io</span>
-            </div>
-          )}
-        </div>
       </SidebarFooter>
     </Sidebar>
   );

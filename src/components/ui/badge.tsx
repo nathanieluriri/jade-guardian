@@ -8,7 +8,9 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
+        // See `button.tsx`: `hover:bg-primary/80` faded the fill toward the
+        // surface and took the white label down to 3.38:1. Solid token instead.
+        default: "border-transparent bg-primary text-primary-foreground hover:bg-primary-strong",
         secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",

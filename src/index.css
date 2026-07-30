@@ -15,8 +15,22 @@
     --popover: 0 0% 100%;
     --popover-foreground: 142 20% 10%;
 
-    --primary: 142 71% 45%;
+    /* Was `142 71% 45%` (emerald-500), which put white `--primary-foreground`
+       at 2.30:1 — a hard WCAG 1.4.3 failure on the single most important
+       control in the product, the sign-in CTA. Deepened along the same 142 hue
+       into green-700 territory until white clears AA: 4.79:1. Nothing else
+       about the brand moves — same hue, same saturation band, just darker.
+       `--sidebar-primary` deliberately keeps the bright 45% value: the sidebar
+       is a dark plane in both themes, so the light-plane correction would make
+       it *less* visible there. */
+    --primary: 142 72% 30%;
     --primary-foreground: 0 0% 100%;
+    /* Brand green that is actually readable as text/icon on a light surface,
+       including on a `bg-primary/10` tint of the fill above (4.77:1) — the
+       tint darkened when `--primary` did, so this moved from 29% to 27% to
+       keep that pair over the line. Same split `--destructive-strong` makes
+       for error text: fills use `--primary`, copy uses this. */
+    --primary-strong: 142 72% 27%;
 
     --secondary: 142 40% 96%;
     --secondary-foreground: 142 20% 15%;
@@ -25,10 +39,16 @@
     --muted-foreground: 142 10% 40%;
 
     --accent: 142 50% 95%;
-    --accent-foreground: 142 71% 30%;
+    /* 30% left the info/success badge pair at 4.45:1 — one point short of AA. */
+    --accent-foreground: 142 71% 29%;
 
-    --destructive: 0 84% 60%;
+    /* Was `0 84% 60%`, which put white `destructive-foreground` at 3.78:1 —
+       fine for a 24px heading, not for a button label. This is the lightest red
+       that clears 4.5:1 with white on top. */
+    --destructive: 0 78% 52%;
     --destructive-foreground: 0 0% 100%;
+    /* Readable destructive text on a tinted destructive surface (error pills). */
+    --destructive-strong: 0 72% 38%;
 
     --warning: 25 95% 53%;
     --warning-foreground: 25 95% 20%;
@@ -41,26 +61,45 @@
 
     --border: 142 20% 90%;
     --input: 142 20% 90%;
-    --ring: 142 71% 45%;
+    /* Tracks `--primary` so a focused control and a filled one are the same
+       green. Free win from the deepening above: the focus ring went from
+       2.30:1 to 4.79:1 against the card, clearing 1.4.11's 3:1 for a
+       non-text indicator. */
+    --ring: 142 72% 30%;
 
     --radius: 10px;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 142 40% 12%;
+    --sidebar-background: 142 50% 12%; /* Dark green */
+    --sidebar-foreground: 142 20% 95%; /* Light green/white */
     --sidebar-primary: 142 71% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 142 77% 97%;
-    --sidebar-accent-foreground: 142 40% 12%;
-    --sidebar-border: 142 60% 82%;
+    --sidebar-accent: 142 45% 20%; /* Slightly lighter dark green for hover */
+    --sidebar-accent-foreground: 142 20% 95%;
+    --sidebar-border: 142 45% 22%; /* Dark border */
     --sidebar-ring: 142 71% 45%;
-    --sidebar-active: 142 71% 45%;
-    --sidebar-active-foreground: 0 0% 100%;
-    --sidebar-muted: 142 15% 46%;
-    --sidebar-group-border: 142 70% 90%;
+    --sidebar-active: 142 45% 23%; /* Active state background */
+    --sidebar-active-foreground: 142 20% 98%; /* Active state text */
+    /* Raised from 60%: at 60% the muted nav label sat at 3.49:1 on the
+       `--sidebar-active` tooltip surface. Still clearly secondary to
+       `--sidebar-foreground`, now readable on both sidebar planes. */
+    --sidebar-muted: 142 18% 72%; /* Muted text */
+    --sidebar-group-border: 142 45% 22%;
 
-    /* Sentinel-specific tokens */
+    /* Cleanm-specific tokens */
     --surface-shadow: 0 0 0 1px hsla(142, 20%, 80%, 0.4), 0 1px 3px hsla(142, 20%, 50%, 0.08);
     --surface-shadow-hover: 0 0 0 1px hsla(142, 20%, 70%, 0.5), 0 4px 12px hsla(142, 30%, 50%, 0.12);
+
+    /* Auth-screen elevation (login / change-password cards, fields, brand CTA).
+       Every value is derived from an existing colour token — no literals. */
+    --shadow-auth-card: 0 12px 40px -12px hsl(var(--foreground) / 0.08);
+    --shadow-auth-field: 0 1px 2px hsl(var(--foreground) / 0.05);
+    --shadow-brand: 0 6px 20px -6px hsl(var(--primary) / 0.45);
+    --shadow-brand-hover: 0 10px 26px -8px hsl(var(--primary) / 0.55);
+    --shadow-brand-soft: 0 4px 14px -6px hsl(var(--primary) / 0.35);
+    /* Standalone tint scale for charts and decorative washes. It no longer
+       mirrors `--primary` (500 used to *be* it); `--primary` now sits between
+       600 and 700. Anything that needs "the brand green" should say
+       `primary`/`primary-strong`, not reach into this ramp. */
     --emerald-50: 142 77% 96%;
     --emerald-100: 142 70% 92%;
     --emerald-200: 142 64% 83%;
@@ -69,6 +108,110 @@
     --emerald-500: 142 71% 45%;
     --emerald-600: 142 76% 36%;
     --emerald-700: 142 72% 29%;
+  }
+
+  /**
+   * Dark theme. `next-themes` is configured with `attribute="class"` and the
+   * root layout stamps `class="dark"` from the `theme` cookie before first
+   * paint, so this block is the *only* thing standing between the toggle in the
+   * sidebar footer and a light-on-light console.
+   *
+   * Every variable `:root` declares is redeclared here — including the shadow
+   * tokens, which are not colours but do carry one, and the emerald ramp.
+   *
+   * Two conventions carried over from the light theme rather than invented:
+   *
+   *  - `--*-strong` (primary, destructive) is the readable-as-text member of a
+   *    pair whose base is a fill. In light that means "darker"; in dark it means
+   *    "lighter". Callers never have to know which.
+   *  - `--warning/anomaly/info-foreground` are used *only* as text on a tinted
+   *    surface of their own hue (`bg-warning/10 text-warning-foreground`), never
+   *    on a solid fill — see `badge.tsx`. They therefore flip light in dark mode
+   *    for the same reason `--*-strong` does.
+   *
+   * Hue stays on the brand's 142 so the console reads as the same product with
+   * the lights off; the ramp is graded by emphasis (higher number = more
+   * emphasis = lighter), which is how the codebase already uses it.
+   */
+  .dark {
+    --background: 142 24% 7%;
+    --foreground: 142 12% 94%;
+
+    --card: 142 22% 10%;
+    --card-foreground: 142 12% 94%;
+
+    --popover: 142 24% 12%;
+    --popover-foreground: 142 12% 94%;
+
+    --primary: 142 62% 52%;
+    /* Bright green needs dark type on it, not white — 8.7:1 instead of 2.3:1. */
+    --primary-foreground: 142 45% 8%;
+    --primary-strong: 142 60% 66%;
+
+    --secondary: 142 20% 16%;
+    --secondary-foreground: 142 12% 92%;
+
+    --muted: 142 18% 15%;
+    --muted-foreground: 142 12% 68%;
+
+    --accent: 142 24% 18%;
+    --accent-foreground: 142 55% 78%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-strong: 0 85% 72%;
+
+    --warning: 25 90% 58%;
+    --warning-foreground: 25 95% 78%;
+
+    --anomaly: 38 92% 58%;
+    --anomaly-foreground: 38 95% 78%;
+
+    --info: 217 88% 66%;
+    --info-foreground: 217 95% 82%;
+
+    --border: 142 16% 20%;
+    --input: 142 16% 24%;
+    --ring: 142 62% 52%;
+
+    /* The sidebar is already dark in the light theme; here it goes a shade
+       deeper than the page so the shell still reads as two planes. */
+    --sidebar-background: 142 30% 8%;
+    --sidebar-foreground: 142 14% 88%;
+    --sidebar-primary: 142 62% 52%;
+    --sidebar-primary-foreground: 142 45% 8%;
+    --sidebar-accent: 142 26% 16%;
+    --sidebar-accent-foreground: 142 12% 96%;
+    --sidebar-border: 142 22% 18%;
+    --sidebar-ring: 142 62% 52%;
+    --sidebar-active: 142 26% 19%;
+    --sidebar-active-foreground: 142 12% 98%;
+    --sidebar-muted: 142 12% 70%;
+    --sidebar-group-border: 142 22% 18%;
+
+    /* Shadows cannot be derived from `--foreground` here: that is now a light
+       colour, and `hsl(var(--foreground) / 0.08)` would paint a halo instead of
+       a shadow. Elevation on dark comes from a near-black drop plus a lifted
+       hairline. */
+    --surface-shadow: 0 0 0 1px hsl(142 16% 20% / 0.8), 0 1px 3px hsl(142 45% 2% / 0.5);
+    --surface-shadow-hover: 0 0 0 1px hsl(142 16% 28% / 0.9), 0 4px 12px hsl(142 45% 2% / 0.6);
+
+    --shadow-auth-card: 0 12px 40px -12px hsl(142 45% 2% / 0.7);
+    --shadow-auth-field: 0 1px 2px hsl(142 45% 2% / 0.6);
+    /* Brand glow still derives from `--primary`, just dialled back: the same
+       alpha reads twice as loud against a dark plane. */
+    --shadow-brand: 0 6px 20px -6px hsl(var(--primary) / 0.35);
+    --shadow-brand-hover: 0 10px 26px -8px hsl(var(--primary) / 0.45);
+    --shadow-brand-soft: 0 4px 14px -6px hsl(var(--primary) / 0.28);
+
+    --emerald-50: 142 40% 11%;
+    --emerald-100: 142 38% 15%;
+    --emerald-200: 142 36% 21%;
+    --emerald-300: 142 42% 31%;
+    --emerald-400: 142 52% 43%;
+    --emerald-500: 142 62% 52%;
+    --emerald-600: 142 62% 62%;
+    --emerald-700: 142 60% 72%;
   }
 }
 

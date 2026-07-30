@@ -44,18 +44,18 @@ function downloadCsv(filename: string, rows: Array<Record<string, string | numbe
 }
 
 export default function UsersPage() {
-  const [start, setStart] = useState(0);
-  const [stop] = useState(50);
+  const [skip, setSkip] = useState(0);
+  const [limit] = useState(50);
   const [search, setSearch] = useState("");
 
   const cleanersQuery = useQuery({
-    queryKey: ["admin-users", "cleaners", { start, stop }],
-    queryFn: () => listCleaners(start, stop),
+    queryKey: ["admin-users", "cleaners", { skip, limit, search }],
+    queryFn: () => listCleaners({ skip, limit, search: search.trim() }),
   });
 
   const customersQuery = useQuery({
-    queryKey: ["admin-users", "customers", { start, stop }],
-    queryFn: () => listCustomers(start, stop),
+    queryKey: ["admin-users", "customers", { skip, limit, search }],
+    queryFn: () => listCustomers({ skip, limit, search: search.trim() }),
   });
 
   const summaryQuery = useQuery({
@@ -111,8 +111,8 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setStart(Math.max(0, start - stop))}>Previous</Button>
-          <Button variant="outline" size="sm" onClick={() => setStart(start + stop)}>Next</Button>
+          <Button variant="outline" size="sm" onClick={() => setSkip(Math.max(0, skip - limit))}>Previous</Button>
+          <Button variant="outline" size="sm" onClick={() => setSkip(skip + limit)}>Next</Button>
         </div>
       </div>
 

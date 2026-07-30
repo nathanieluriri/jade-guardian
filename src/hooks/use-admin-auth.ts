@@ -1,35 +1,112 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { clearAuthState, getAuthState, setAuthState } from "@/lib/api/auth-storage";
-import { fetchAdminProfile, loginAdmin, revokeCurrentSession } from "@/lib/api/admin-api";
+import { clearAuthHint, hasAuthHint, setAuthHint } from "@/lib/api/auth-storage";
+import {
+  changeAdminPassword,
+  fetchAdminProfile,
+  loginAdmin,
+  logoutAdmin,
+  verifyAdminOtp,
+} from "@/lib/api/admin-api";
+import { resolveFirstAllowedAdminRoute } from "@/lib/admin-access";
+import { adminAuthErrorCopy } from "@/lib/api/auth-errors";
+import type { ApiError } from "@/lib/api/types";
+
+export const ADMIN_PROFILE_QUERY_KEY = ["admin-profile"];
+
+export type LoginStep =
+  | { kind: "credentials" }
+  | { kind: "otp"; challengeId: string; method: "email" | "totp"; email: string };
 
 export function useAdminProfile() {
   return useQuery({
-    queryKey: ["admin-profile"],
+    queryKey: ADMIN_PROFILE_QUERY_KEY,
     queryFn: fetchAdminProfile,
-    enabled: !!getAuthState()?.accessToken,
+    enabled: hasAuthHint(),
     staleTime: 60_000,
   });
 }
 
-export function useAdminLogin() {
+/**
+ * Drives the two-state admin login flow: credentials, then (almost always)
+ * an OTP challenge. No auth hint is set until the OTP is verified — the
+ * challenge step alone never grants a session.
+ */
+export function useAdminLoginFlow() {
+  const [step, setStep] = useState<LoginStep>({ kind: "credentials" });
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  return useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) =>
-      loginAdmin(email, password),
-    onSuccess: (data) => {
-      setAuthState({
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
+  const completeLogin = useCallback(async () => {
+    setAuthHint();
+    queryClient.invalidateQueries({ queryKey: ADMIN_PROFILE_QUERY_KEY });
+    try {
+      const profile = await queryClient.fetchQuery({
+        queryKey: ADMIN_PROFILE_QUERY_KEY,
+        queryFn: fetchAdminProfile,
       });
-      queryClient.invalidateQueries({ queryKey: ["admin-profile"] });
-      router.replace("/admin/overview");
+      router.replace(profile.mustChangePassword ? "/admin/change-password" : resolveFirstAllowedAdminRoute(profile));
+    } catch {
+      router.replace("/admin/access");
+    }
+  }, [queryClient, router]);
+
+  const submitCredentials = useCallback(
+    async ({ email, password }: { email: string; password: string }) => {
+      setError(null);
+      setIsPending(true);
+      try {
+        const data = await loginAdmin(email, password);
+        if ("otpRequired" in data && data.otpRequired) {
+          setStep({ kind: "otp", challengeId: data.otpChallengeId, method: data.method, email });
+          return;
+        }
+
+        // Legacy (ADMIN_OTP_REQUIRED=false) response: login already completed.
+        await completeLogin();
+      } catch (err) {
+        setError(adminAuthErrorCopy(err as ApiError));
+      } finally {
+        setIsPending(false);
+      }
     },
-  });
+    [completeLogin]
+  );
+
+  const submitOtp = useCallback(
+    async (code: string) => {
+      if (step.kind !== "otp") return;
+      setError(null);
+      setIsPending(true);
+      try {
+        await verifyAdminOtp(step.challengeId, code);
+        await completeLogin();
+      } catch (err) {
+        const apiError = err as ApiError;
+        if (apiError.code === "OTP_LOCKED") {
+          // The challenge is burned after 5 attempts; only a fresh login
+          // (new challenge) can recover, so drop back to credentials.
+          setStep({ kind: "credentials" });
+        }
+        setError(adminAuthErrorCopy(apiError));
+      } finally {
+        setIsPending(false);
+      }
+    },
+    [step, completeLogin]
+  );
+
+  const backToCredentials = useCallback(() => {
+    setError(null);
+    setStep({ kind: "credentials" });
+  }, []);
+
+  return { step, submitCredentials, submitOtp, backToCredentials, error, isPending };
 }
 
 export function useAdminLogout() {
@@ -38,12 +115,47 @@ export function useAdminLogout() {
 
   return async () => {
     try {
-      await revokeCurrentSession();
+      await logoutAdmin();
     } catch {
-      // Best effort logout: clear local auth state even if revoke endpoint fails.
+      // Best effort logout: clear the local auth hint even if the request fails.
     }
-    clearAuthState();
+    clearAuthHint();
     queryClient.clear();
     router.replace("/admin/login");
   };
+}
+
+/**
+ * Mutation for the `mustChangePassword` gate and the settings screen alike.
+ * On success the profile is force-refetched so `mustChangePassword` flips to
+ * false wherever it's read (route guard, redirect decision).
+ *
+ * The refetch is deliberately isolated in its own try/catch: TanStack Query
+ * awaits `onSuccess` as part of the mutation itself (`mutation.ts`'s
+ * `execute()`), so a promise it returns that rejects flips the *mutation's*
+ * state to `error` and rejects `mutateAsync` — even though `changeAdminPassword`
+ * already succeeded. The password change is irreversible (the backend has
+ * already rotated it and revoked other sessions); a transient network blip on
+ * the follow-up profile GET must not be reported to the caller as a failed
+ * submission. Worst case on a caught failure: the cache keeps the pre-change
+ * (stale) profile until the next natural refetch picks up `mustChangePassword: false`.
+ */
+export function useChangePassword() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      changeAdminPassword(currentPassword, newPassword),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ADMIN_PROFILE_QUERY_KEY });
+      try {
+        await queryClient.fetchQuery({
+          queryKey: ADMIN_PROFILE_QUERY_KEY,
+          queryFn: fetchAdminProfile,
+        });
+      } catch {
+        // Swallowed on purpose — see the doc comment above.
+      }
+    },
+  });
 }

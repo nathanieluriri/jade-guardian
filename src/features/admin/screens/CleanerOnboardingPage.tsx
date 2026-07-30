@@ -8,6 +8,7 @@ import { fetchCleanerById, listOnboardingQueue, reviewCleanerOnboarding } from "
 import { OnboardingQueue } from "@/components/OnboardingQueue";
 import { OnboardingDetail } from "@/components/OnboardingDetail";
 import { computeOnboardingStats, mapCleanerToOnboarding, type CleanerOnboarding } from "@/lib/onboarding";
+import { AdminLoadingState } from "@/components/AdminLoadingState";
 
 function resolveCleanerId(input: { id?: string; _id?: string }): string {
   return input.id || input._id || "";
@@ -16,14 +17,14 @@ function resolveCleanerId(input: { id?: string; _id?: string }): string {
 export default function CleanerOnboardingPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [start, setStart] = useState(0);
-  const [stop, setStop] = useState(20);
+  const [skip, setSkip] = useState(0);
+  const [limit] = useState(20);
   const [selectedCleanerId, setSelectedCleanerId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<Array<{ cleanerId: string; decision: "APPROVED" | "REJECTED"; at: string }>>([]);
 
   const cleanersQuery = useQuery({
-    queryKey: ["admin-cleaners", { search, start, stop }],
-    queryFn: () => listOnboardingQueue(start, stop, "submitted_at"),
+    queryKey: ["admin-cleaners", { search, skip, limit }],
+    queryFn: () => listOnboardingQueue({ skip, limit, search: search.trim() }),
   });
 
   const normalizedCleaners = useMemo(() => {
@@ -157,8 +158,8 @@ export default function CleanerOnboardingPage() {
           />
           <button
             onClick={() => {
-              const nextStart = start + stop;
-              setStart(nextStart);
+              const nextSkip = skip + limit;
+              setSkip(nextSkip);
             }}
             className="h-9 rounded-md border border-input px-3 text-sm"
           >
@@ -169,7 +170,7 @@ export default function CleanerOnboardingPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
         <div className="space-y-3">
-          {cleanersQuery.isLoading && <p className="font-mono-data text-muted-foreground">Loading onboarding queue...</p>}
+          {cleanersQuery.isLoading && <AdminLoadingState label="Loading onboarding queue..." />}
           {cleanersQuery.isError && <p className="font-mono-data text-destructive">Failed to load onboarding queue.</p>}
           {!cleanersQuery.isLoading && !cleanersQuery.isError && (
             <OnboardingQueue cleaners={normalizedCleaners} stats={stats} onSelect={(cleaner) => setSelectedCleanerId(cleaner.id)} />

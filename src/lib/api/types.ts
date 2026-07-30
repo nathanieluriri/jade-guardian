@@ -14,26 +14,163 @@ export interface ApiError {
   details?: unknown;
 }
 
+export interface AdminProfilePermissionEntry {
+  key?: string;
+  path: string;
+  methods: string[];
+}
+
+export type AdminAccountStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "DEACTIVATED" | "DELETED";
+
+/**
+ * Mirrors the backend's `AdminOut` (`app/server/schemas/admin.ts`) field for
+ * field. Nothing else is on the wire: the earlier `full_name`,
+ * `email_verified` and `last_auth_at` fields were invented client-side —
+ * `AdminOut` sends `firstName`/`lastName` and has no verification or
+ * last-auth field at all, so anything rendered from them was always a
+ * placeholder ("Pending" / "Never" / the email prefix as a name).
+ *
+ * The name halves and the audit timestamps stay optional so a partial
+ * profile (test fixture, older deployment) still type-checks; everything the
+ * auth gate depends on stays required.
+ */
 export interface AdminProfile {
   id: string;
-  full_name?: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
-  accountStatus?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-  email_verified?: boolean;
-  last_auth_at?: number | null;
-  permissionList?: {
-    permissions: Array<{ name: string; methods: string[]; path: string; key?: string; description?: string }>;
-  };
+  accountStatus?: AdminAccountStatus;
+  isSuperAdmin?: boolean;
+  preferredLanguage?: "en" | "fr";
+  accessPreset: string | null;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  dateCreated?: number | null;
+  lastUpdated?: number | null;
+  permissionList?: string[] | { permissions: Array<string | AdminProfilePermissionEntry> };
 }
 
-export interface AdminLoginResponse {
-  access_token: string;
-  refresh_token: string;
+/** Camel-cased token bundle matching the backend's `TokenResponse` — never persisted by the web client. */
+export interface TokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
+  language: "en" | "fr";
 }
 
-export interface AdminRefreshResponse {
-  access_token: string;
-  refresh_token: string;
+export interface AdminOtpChallenge {
+  otpRequired: true;
+  otpChallengeId: string;
+  method: "email" | "totp";
+}
+
+export interface AdminLoginSuccess {
+  admin: AdminProfile;
+  tokens: TokenResponse | null;
+}
+
+/** `POST /admins/login` (and the `verify-otp` result): either an OTP challenge or a completed login. */
+export type AdminLoginResponse = AdminOtpChallenge | AdminLoginSuccess;
+
+/** `POST /admins/2fa/setup` response — a pending secret to render as a QR code. */
+export interface TotpSetupData {
+  secret: string;
+  otpauthUri: string;
+}
+
+/** `POST /admins/2fa/verify` and `.../backup-codes/regenerate` response — shown once, in plaintext. */
+export interface TotpBackupCodesData {
+  backupCodes: string[];
+}
+
+/** `GET /admins/access-presets` item. */
+export interface AccessPresetSummary {
+  key: string;
+  label: string;
+  description: string;
+  permissionCount: number;
+}
+
+/** `POST /admins/access-presets/bulk` response. */
+export interface AccessPresetBulkResult {
+  updated: number;
+  skipped: Array<{ id: string; reason: string }>;
+}
+
+export interface PermissionGroupPermission {
+  key?: string;
+  name?: string;
+  path?: string;
+  methods?: string[];
+  description?: string;
+}
+
+export interface AdminPermissionGroup {
+  id?: string;
+  _id?: string;
+  name: string;
+  description?: string;
+  is_built_in?: boolean;
+  source?: "built_in" | "custom" | string;
+  type?: "built_in" | "custom" | string;
+  permissions?: Array<string | PermissionGroupPermission>;
+}
+
+export interface AdminPermissionGroupsResponse {
+  builtIn?: AdminPermissionGroup[];
+  custom?: AdminPermissionGroup[];
+}
+
+export interface AdminElevationRequestStatus {
+  request_id?: string;
+  status?: "PENDING" | "APPROVED" | "REJECTED" | string;
+  reason?: string | null;
+  requestedPermissions?: string[];
+  requestedPermissionGroups?: string[];
+  grantedPermissions?: string[];
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: number | null;
+  date_created?: number | null;
+  date_updated?: number | null;
+}
+
+export type ElevationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface ElevationRequestItem {
+  requestId: string;
+  adminId: string;
+  status: ElevationStatus;
+  reason: string | null;
+  requestedPermissions: string[];
+  requestedPermissionGroups: string[];
+  grantedPermissions: string[];
+  reviewedBy: string | null;
+  reviewedAt: number | null;
+  decisionNote: string | null;
+  dateCreated: number | null;
+  lastUpdated: number | null;
+}
+
+export interface DecideElevationRequestPayload {
+  decision: "APPROVED" | "REJECTED";
+  grantedPermissions?: string[];
+  note?: string | null;
+}
+
+export interface DecideElevationResponse {
+  requestId: string;
+  status: ElevationStatus;
+  grantedPermissions: string[];
+  decisionNote: string | null;
+  reviewedBy: string;
+  reviewedAt: number;
+}
+
+export interface SubmitElevationRequestPayload {
+  requestedPermissionGroups: string[];
+  reason: string;
 }
 
 export interface SessionRevokeResponse {
@@ -139,6 +276,19 @@ export interface RoleTemplate {
   permissionList: {
     permissions: Permission[];
   };
+}
+
+/**
+ * Shared pagination/search shape accepted by the backend's `AdminListQuery` schema
+ * (`limit`/`skip`/`search` — see `app/server/schemas/admin-core.ts` in the backend
+ * repo). Individual routes vary in which of these three they actually forward to
+ * their service (some accept `search` in the schema but never read it); each
+ * `admin-api.ts` function's own doc comment notes whether search is honored.
+ */
+export interface AdminListParams {
+  limit?: number;
+  skip?: number;
+  search?: string;
 }
 
 export interface CleanerListItem {
@@ -311,3 +461,86 @@ export interface SignupTrendPoint {
   total?: number;
   [key: string]: unknown;
 }
+
+export interface AdminAutocompleteUser {
+  id?: string;
+  _id?: string;
+  firstName?: string;
+  lastName?: string;
+  full_name?: string;
+  email?: string;
+  allow_admin_selection?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AdminUsersAutocompleteResponse {
+  customers?: AdminAutocompleteUser[];
+  cleaners?: AdminAutocompleteUser[];
+}
+
+export interface AdminCustomerPlaceOut {
+  place_id: string;
+  label?: string;
+  name?: string;
+  formatted_address?: string;
+  longitude?: number;
+  latitude?: number;
+  country_code?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface ConciergeBookingDuration {
+  hours: number;
+  minutes: number;
+}
+
+export interface ConciergeBookingExtras {
+  add_ons: unknown[];
+  [key: string]: unknown;
+}
+
+export interface ConciergeBookingCreateRequest {
+  customer_id: string;
+  place_id: string;
+  cleaner_id: string;
+  schedule: number;
+  extras: ConciergeBookingExtras;
+  service: string;
+  duration: ConciergeBookingDuration;
+  custom_details: Record<string, unknown> | null;
+}
+
+export interface ConciergeBookingCreateResult {
+  booking?: Record<string, unknown>;
+  concierge_record?: Record<string, unknown>;
+}
+
+export interface AdminCreateCustomerPlaceRequest {
+  admin_id: string;
+  label: string;
+  place_id: string;
+  isDefault?: boolean;
+}
+
+export interface PlacesAutocompleteItem {
+  place_id: string;
+  name?: string;
+  formatted_address?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface PlaceDetailsOut extends PlacesAutocompleteItem {
+  longitude?: number;
+  latitude?: number;
+  country_code?: string;
+}
+
+export interface AdminResourceItem {
+  id?: string;
+  _id?: string;
+  [key: string]: unknown;
+}
+
+export type AdminResourcePayload = Record<string, unknown>;
