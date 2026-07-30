@@ -14,6 +14,7 @@ import type {
   DecideElevationRequestPayload,
   DecideElevationResponse,
   AdminLoginResponse,
+  AccessPresetSummary,
   AlertSlaMetrics,
   PlaceDetailsOut,
   PlacesAutocompleteItem,
@@ -39,6 +40,8 @@ import type {
   SubmitElevationRequestPayload,
   SessionAnomalies,
   SignupTrendPoint,
+  TotpBackupCodesData,
+  TotpSetupData,
   UsersSummaryReport,
 } from "@/lib/api/types";
 
@@ -162,6 +165,107 @@ export async function loginAdmin(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
 
+  return response.data;
+}
+
+/**
+ * Completes an OTP challenge issued by `loginAdmin`. There is no session
+ * cookie yet at this point, so `auth: false` skips the pointless
+ * refresh-and-retry dance on a 401/429 (OTP_INVALID/OTP_EXPIRED/OTP_LOCKED)
+ * and leaves any unrelated existing auth hint alone.
+ */
+export async function verifyAdminOtp(challengeId: string, code: string) {
+  const response = await apiRequest<AdminLoginResponse>(
+    "/v1/admins/verify-otp",
+    {
+      method: "POST",
+      body: JSON.stringify({ challengeId, code }),
+    },
+    { auth: false }
+  );
+
+  return response.data;
+}
+
+export async function changeAdminPassword(currentPassword: string, newPassword: string) {
+  const response = await apiRequest<unknown>("/v1/admins/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  return response.data;
+}
+
+export async function logoutAdmin() {
+  const response = await apiRequest<{ ok: boolean }>("/v1/admins/logout", { method: "POST" });
+  return response.data;
+}
+
+/** Begins (or restarts) TOTP enrollment. `code` is required only when TOTP is already enabled. */
+export async function setupTotp(code?: string) {
+  const response = await apiRequest<TotpSetupData>("/v1/admins/2fa/setup", {
+    method: "POST",
+    body: JSON.stringify(code ? { code } : {}),
+  });
+  return response.data;
+}
+
+export async function verifyTotp(code: string) {
+  const response = await apiRequest<TotpBackupCodesData>("/v1/admins/2fa/verify", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function disableTotp(code: string) {
+  const response = await apiRequest<unknown>("/v1/admins/2fa", {
+    method: "DELETE",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function regenerateBackupCodes(code: string) {
+  const response = await apiRequest<TotpBackupCodesData>("/v1/admins/2fa/backup-codes/regenerate", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function inviteAdmin(payload: { email: string; fullName: string; accessPreset: string }) {
+  const response = await apiRequest<AdminProfile>("/v1/admins/invites", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function resendAdminInvite(adminId: string) {
+  const response = await apiRequest<unknown>(`/v1/admins/invites/${adminId}/resend`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+export async function listAccessPresets() {
+  const response = await apiRequest<AccessPresetSummary[]>("/v1/admins/access-presets");
+  return response.data;
+}
+
+export async function setAdminAccessPreset(adminId: string, preset: string) {
+  const response = await apiRequest<unknown>(`/v1/admins/${adminId}/access-preset`, {
+    method: "PATCH",
+    body: JSON.stringify({ preset }),
+  });
+  return response.data;
+}
+
+export async function bulkSetAdminAccessPreset(adminIds: string[], preset: string) {
+  const response = await apiRequest<unknown>("/v1/admins/access-presets/bulk", {
+    method: "POST",
+    body: JSON.stringify({ adminIds, preset }),
+  });
   return response.data;
 }
 

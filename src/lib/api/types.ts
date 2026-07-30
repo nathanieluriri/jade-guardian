@@ -57,6 +57,25 @@ export interface AdminLoginSuccess {
 /** `POST /admins/login` (and the `verify-otp` result): either an OTP challenge or a completed login. */
 export type AdminLoginResponse = AdminOtpChallenge | AdminLoginSuccess;
 
+/** `POST /admins/2fa/setup` response — a pending secret to render as a QR code. */
+export interface TotpSetupData {
+  secret: string;
+  otpauthUri: string;
+}
+
+/** `POST /admins/2fa/verify` and `.../backup-codes/regenerate` response — shown once, in plaintext. */
+export interface TotpBackupCodesData {
+  backupCodes: string[];
+}
+
+/** `GET /admins/access-presets` item. */
+export interface AccessPresetSummary {
+  key: string;
+  label: string;
+  description: string;
+  permissionCount: number;
+}
+
 export interface PermissionGroupPermission {
   key?: string;
   name?: string;
