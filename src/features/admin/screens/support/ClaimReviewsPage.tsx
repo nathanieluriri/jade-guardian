@@ -25,7 +25,7 @@ export default function ClaimReviewsPage() {
         { key: "claim_type", label: "Claim Type", type: "text", required: true },
         { key: "description", label: "Description", type: "textarea", required: true },
       ]}
-      listFn={() => listClaimReviews(0, 100)}
+      listFn={() => listClaimReviews({ skip: 0, limit: 100 })}
       createFn={createClaimReview}
       updateFn={updateClaimReview}
       deleteFn={deleteClaimReview}

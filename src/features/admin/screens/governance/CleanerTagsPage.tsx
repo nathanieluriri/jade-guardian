@@ -25,7 +25,7 @@ export default function CleanerTagsPage() {
         { key: "is_verified", label: "Verified", type: "boolean" },
         { key: "verified_by_admin_id", label: "Verified By Admin ID", type: "text" },
       ]}
-      listFn={() => listCleanerTags(0, 100)}
+      listFn={() => listCleanerTags({ skip: 0, limit: 100 })}
       createFn={createCleanerTag}
       updateFn={updateCleanerTag}
       deleteFn={deleteCleanerTag}

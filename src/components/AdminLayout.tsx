@@ -67,7 +67,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
               <div className="hidden md:flex items-center gap-1.5 ml-4 px-2 py-0.5 rounded-full bg-primary/10">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse-dot" />
-                <span className="font-mono-data text-primary text-[10px]">Healthy</span>
+                <span className="font-mono-data text-primary-strong text-[10px]">Healthy</span>
               </div>
             </div>
             <div className="flex items-center gap-3">

@@ -27,7 +27,7 @@ export default function PromoCodesPage() {
         { key: "valid_to_epoch", label: "Valid To (Epoch)", type: "number", placeholder: "1776651600" },
         { key: "is_active", label: "Active", type: "boolean" },
       ]}
-      listFn={() => listPromoCodes(0, 100)}
+      listFn={() => listPromoCodes({ skip: 0, limit: 100 })}
       createFn={createPromoCode}
       updateFn={updatePromoCode}
       deleteFn={deletePromoCode}

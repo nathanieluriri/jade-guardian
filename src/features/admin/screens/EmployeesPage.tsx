@@ -72,8 +72,8 @@ export default function EmployeesPage() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   const queueQuery = useQuery({
-    queryKey: ["admin-onboarding-table"],
-    queryFn: () => listOnboardingQueue(0, 100, "submitted_at"),
+    queryKey: ["admin-onboarding-table", search],
+    queryFn: () => listOnboardingQueue({ skip: 0, limit: 100, search: search.trim() }),
   });
 
   const rows = useMemo(() => {

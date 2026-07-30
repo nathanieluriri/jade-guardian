@@ -206,7 +206,7 @@ export default function ConciergeBookingsPage() {
 
   const bookingsQuery = useQuery({
     queryKey: ["operations", "concierge-bookings"],
-    queryFn: () => listConciergeBookings(0, 100),
+    queryFn: () => listConciergeBookings({ skip: 0, limit: 100 }),
     enabled: canRead,
   });
 
@@ -242,13 +242,13 @@ export default function ConciergeBookingsPage() {
 
   const serviceDefinitionsQuery = useQuery({
     queryKey: ["concierge-booking", "service-definitions"],
-    queryFn: () => listServiceDefinitions(0, 100),
+    queryFn: () => listServiceDefinitions({ skip: 0, limit: 100 }),
     enabled: open && canReadServices,
   });
 
   const addOnsQuery = useQuery({
     queryKey: ["concierge-booking", "add-ons"],
-    queryFn: () => listAddOns(0, 100),
+    queryFn: () => listAddOns({ skip: 0, limit: 100 }),
     enabled: open && canReadAddOns,
   });
 

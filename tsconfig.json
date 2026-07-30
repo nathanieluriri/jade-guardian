@@ -37,9 +37,6 @@
   ],
   "exclude": [
     "node_modules",
-    "playwright.config.ts",
-    "playwright-fixture.ts",
-    "vite.config.ts",
     "vitest.config.ts"
   ]
 }

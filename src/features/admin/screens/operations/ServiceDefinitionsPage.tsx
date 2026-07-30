@@ -25,7 +25,7 @@ export default function ServiceDefinitionsPage() {
         { key: "is_active", label: "Active", type: "boolean" },
         { key: "notes", label: "Notes", type: "textarea", placeholder: "Internal operational notes." },
       ]}
-      listFn={() => listServiceDefinitions(0, 100)}
+      listFn={() => listServiceDefinitions({ skip: 0, limit: 100 })}
       createFn={createServiceDefinition}
       updateFn={updateServiceDefinition}
       deleteFn={deleteServiceDefinition}

@@ -26,7 +26,7 @@ export default function ServiceCreditsPage() {
         { key: "source", label: "Source", type: "text", placeholder: "support_adjustment" },
         { key: "note", label: "Note", type: "textarea" },
       ]}
-      listFn={() => listServiceCredits(0, 100)}
+      listFn={() => listServiceCredits({ skip: 0, limit: 100 })}
       createFn={createServiceCredit}
       updateFn={updateServiceCredit}
       deleteFn={deleteServiceCredit}

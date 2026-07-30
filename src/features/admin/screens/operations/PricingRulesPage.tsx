@@ -29,7 +29,7 @@ export default function PricingRulesPage() {
         { key: "end_hour", label: "End Hour", type: "number", placeholder: "22" },
         { key: "is_active", label: "Active", type: "boolean" },
       ]}
-      listFn={() => listPricingRules(0, 100)}
+      listFn={() => listPricingRules({ skip: 0, limit: 100 })}
       createFn={createPricingRule}
       updateFn={updatePricingRule}
       deleteFn={deletePricingRule}

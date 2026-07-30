@@ -17,14 +17,14 @@ function resolveCleanerId(input: { id?: string; _id?: string }): string {
 export default function CleanerOnboardingPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [start, setStart] = useState(0);
-  const [stop, setStop] = useState(20);
+  const [skip, setSkip] = useState(0);
+  const [limit] = useState(20);
   const [selectedCleanerId, setSelectedCleanerId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<Array<{ cleanerId: string; decision: "APPROVED" | "REJECTED"; at: string }>>([]);
 
   const cleanersQuery = useQuery({
-    queryKey: ["admin-cleaners", { search, start, stop }],
-    queryFn: () => listOnboardingQueue(start, stop, "submitted_at"),
+    queryKey: ["admin-cleaners", { search, skip, limit }],
+    queryFn: () => listOnboardingQueue({ skip, limit, search: search.trim() }),
   });
 
   const normalizedCleaners = useMemo(() => {
@@ -158,8 +158,8 @@ export default function CleanerOnboardingPage() {
           />
           <button
             onClick={() => {
-              const nextStart = start + stop;
-              setStart(nextStart);
+              const nextSkip = skip + limit;
+              setSkip(nextSkip);
             }}
             className="h-9 rounded-md border border-input px-3 text-sm"
           >

@@ -26,7 +26,7 @@ export default function BroadcastsPage() {
         { key: "schedule_epoch", label: "Schedule Epoch", type: "number", placeholder: "1774056000" },
         { key: "status", label: "Status", type: "text", placeholder: "draft|queued|sent" },
       ]}
-      listFn={() => listBroadcasts(0, 100)}
+      listFn={() => listBroadcasts({ skip: 0, limit: 100 })}
       createFn={createBroadcast}
       updateFn={updateBroadcast}
       deleteFn={deleteBroadcast}

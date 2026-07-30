@@ -17,7 +17,7 @@ import {
   revokeOtherSessions,
   fetchSessionAnomalies,
 } from "@/lib/api/admin-api";
-import { clearAuthState } from "@/lib/api/auth-storage";
+import { clearAuthHint } from "@/lib/api/auth-storage";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +57,7 @@ export default function SessionsPage() {
     mutationFn: revokeCurrentSession,
     onSuccess: () => {
       toast.success("Current session revoked. Logging out...");
-      clearAuthState();
+      clearAuthHint();
       queryClient.clear();
       router.replace("/admin/login");
     },

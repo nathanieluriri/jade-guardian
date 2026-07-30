@@ -26,7 +26,7 @@ export default function AddOnsPage() {
         { key: "is_active", label: "Active", type: "boolean" },
         { key: "notes", label: "Notes", type: "textarea" },
       ]}
-      listFn={() => listAddOns(0, 100)}
+      listFn={() => listAddOns({ skip: 0, limit: 100 })}
       createFn={createAddOn}
       updateFn={updateAddOn}
       deleteFn={deleteAddOn}

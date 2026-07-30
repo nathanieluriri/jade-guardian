@@ -26,7 +26,7 @@ export default function PayoutAdjustmentsPage() {
         { key: "reason", label: "Reason", type: "textarea", required: true },
         { key: "approved", label: "Approved", type: "boolean" },
       ]}
-      listFn={() => listPayoutAdjustments(0, 100)}
+      listFn={() => listPayoutAdjustments({ skip: 0, limit: 100 })}
       createFn={createPayoutAdjustment}
       updateFn={updatePayoutAdjustment}
       deleteFn={deletePayoutAdjustment}

@@ -4,6 +4,7 @@ import type {
   AdminCreateCustomerPlaceRequest,
   AdminCustomerPlaceOut,
   AdminElevationRequestStatus,
+  AdminListParams,
   AdminPermissionGroup,
   AdminPermissionGroupsResponse,
   AdminProfile,
@@ -14,6 +15,8 @@ import type {
   DecideElevationRequestPayload,
   DecideElevationResponse,
   AdminLoginResponse,
+  AccessPresetBulkResult,
+  AccessPresetSummary,
   AlertSlaMetrics,
   PlaceDetailsOut,
   PlacesAutocompleteItem,
@@ -39,6 +42,8 @@ import type {
   SubmitElevationRequestPayload,
   SessionAnomalies,
   SignupTrendPoint,
+  TotpBackupCodesData,
+  TotpSetupData,
   UsersSummaryReport,
 } from "@/lib/api/types";
 
@@ -156,12 +161,130 @@ function normalizePlaces(input: unknown): PlacesAutocompleteItem[] {
   return input.filter((item): item is PlacesAutocompleteItem => !!item && typeof item === "object");
 }
 
+/**
+ * Starts a login. `auth: false` for the same reason as `verifyAdminOtp` below:
+ * there is no session to rotate yet, so the refresh-and-replay path can only do
+ * harm — a wrong password (401 `INVALID_CREDENTIALS`) used to trigger a refresh
+ * and then *replay the login*, recording two failed attempts server-side for
+ * one human attempt and burning the rate-limit/lockout budget (and the audit
+ * trail) twice as fast. It also leaves any unrelated existing auth hint alone.
+ */
 export async function loginAdmin(email: string, password: string) {
-  const response = await apiRequest<AdminLoginResponse>("/v1/admins/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+  const response = await apiRequest<AdminLoginResponse>(
+    "/v1/admins/login",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    },
+    { auth: false }
+  );
 
+  return response.data;
+}
+
+/**
+ * Completes an OTP challenge issued by `loginAdmin`. There is no session
+ * cookie yet at this point, so `auth: false` skips the pointless
+ * refresh-and-retry dance on a 401/429 (OTP_INVALID/OTP_EXPIRED/OTP_LOCKED)
+ * and leaves any unrelated existing auth hint alone.
+ */
+export async function verifyAdminOtp(challengeId: string, code: string) {
+  const response = await apiRequest<AdminLoginResponse>(
+    "/v1/admins/verify-otp",
+    {
+      method: "POST",
+      body: JSON.stringify({ challengeId, code }),
+    },
+    { auth: false }
+  );
+
+  return response.data;
+}
+
+export async function changeAdminPassword(currentPassword: string, newPassword: string) {
+  const response = await apiRequest<{ ok: boolean }>("/v1/admins/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  return response.data;
+}
+
+export async function logoutAdmin() {
+  const response = await apiRequest<{ ok: boolean }>("/v1/admins/logout", { method: "POST" });
+  return response.data;
+}
+
+/** Begins (or restarts) TOTP enrollment. `code` is required only when TOTP is already enabled. */
+export async function setupTotp(code?: string) {
+  const response = await apiRequest<TotpSetupData>("/v1/admins/2fa/setup", {
+    method: "POST",
+    body: JSON.stringify(code ? { code } : {}),
+  });
+  return response.data;
+}
+
+export async function verifyTotp(code: string) {
+  const response = await apiRequest<TotpBackupCodesData>("/v1/admins/2fa/verify", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function disableTotp(code: string) {
+  // Backend responds with an intentionally empty object (`envelopeOf(z.object({}))`).
+  const response = await apiRequest<Record<string, never>>("/v1/admins/2fa", {
+    method: "DELETE",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function regenerateBackupCodes(code: string) {
+  const response = await apiRequest<TotpBackupCodesData>("/v1/admins/2fa/backup-codes/regenerate", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return response.data;
+}
+
+export async function inviteAdmin(payload: { email: string; fullName: string; accessPreset: string }) {
+  const response = await apiRequest<AdminProfile>("/v1/admins/invites", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function resendAdminInvite(adminId: string) {
+  const response = await apiRequest<AdminProfile>(`/v1/admins/invites/${adminId}/resend`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+/**
+ * Backend wraps the catalog in `{ items: [...] }` (`AccessPresetCatalogOut`) — not
+ * a bare array. Unwrap here so callers (Task 6's `.map()`) get the array directly.
+ */
+export async function listAccessPresets() {
+  const response = await apiRequest<{ items: AccessPresetSummary[] }>("/v1/admins/access-presets");
+  return response.data.items;
+}
+
+export async function setAdminAccessPreset(adminId: string, preset: string) {
+  const response = await apiRequest<AdminProfile>(`/v1/admins/${adminId}/access-preset`, {
+    method: "PATCH",
+    body: JSON.stringify({ preset }),
+  });
+  return response.data;
+}
+
+export async function bulkSetAdminAccessPreset(adminIds: string[], preset: string) {
+  const response = await apiRequest<AccessPresetBulkResult>("/v1/admins/access-presets/bulk", {
+    method: "POST",
+    body: JSON.stringify({ adminIds, preset }),
+  });
   return response.data;
 }
 
@@ -212,17 +335,22 @@ export async function fetchElevationRequestStatus() {
   return response.data;
 }
 
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array.
+ * The route only forwards `limit`/`skip` from the shared `AdminListQuery` schema — `search` is
+ * declared there but unused by this particular route, so it isn't sent.
+ */
 export async function listElevationRequests(params: {
   status?: "PENDING" | "APPROVED" | "REJECTED";
-  start?: number;
-  stop?: number;
+  limit?: number;
+  skip?: number;
 } = {}) {
-  const search = new URLSearchParams();
-  if (params.status) search.set("status", params.status);
-  search.set("start", String(params.start ?? 0));
-  search.set("stop", String(params.stop ?? 50));
-  const response = await apiRequest<ElevationRequestItem[]>(`/v1/admins/access/requests?${search.toString()}`);
-  return response.data || [];
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  query.set("limit", String(params.limit ?? 50));
+  query.set("skip", String(params.skip ?? 0));
+  const response = await apiRequest<{ items?: ElevationRequestItem[] }>(`/v1/admins/access/requests?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function decideElevationRequest(requestId: string, payload: DecideElevationRequestPayload) {
@@ -246,20 +374,26 @@ export async function fetchAuthHeatmap(days = 14) {
   return response.data?.items || [];
 }
 
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array.
+ * The route only forwards `limit`/`skip` from the shared `AdminListQuery` schema. `status` and
+ * `unreadOnly` aren't part of that schema and are already silently dropped server-side — a
+ * distinct, pre-existing issue from the pagination param mismatch this fixes, left alone here.
+ */
 export async function fetchAlerts(params: {
   status?: string;
   unreadOnly?: boolean;
-  start?: number;
-  stop?: number;
+  limit?: number;
+  skip?: number;
 }) {
-  const search = new URLSearchParams();
-  if (params.status) search.set("status", params.status);
-  if (params.unreadOnly !== undefined) search.set("unreadOnly", String(params.unreadOnly));
-  search.set("start", String(params.start ?? 0));
-  search.set("stop", String(params.stop ?? 20));
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.unreadOnly !== undefined) query.set("unreadOnly", String(params.unreadOnly));
+  query.set("limit", String(params.limit ?? 20));
+  query.set("skip", String(params.skip ?? 0));
 
-  const response = await apiRequest<MonitoringAlert[]>(`/v1/admins/monitoring/alerts?${search.toString()}`);
-  return response.data || [];
+  const response = await apiRequest<{ items?: MonitoringAlert[] }>(`/v1/admins/monitoring/alerts?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function updateAlertReadState(alertId: string, isRead: boolean) {
@@ -368,26 +502,35 @@ export async function exportAuditLog(payload: {
   return createAuditExportJob(payload);
 }
 
+/**
+ * The `/monitoring/audit/history` route only reads `limit`/`skip` from the shared
+ * `AdminListQuery` schema, so this function's own `start`/`stop` pagination fields (kept as-is
+ * here — renaming them would ripple through `AuditPage.tsx`'s URL-synced filter state, which is
+ * outside this fix's scope) are sent on the wire as `skip`/`limit`. Every other filter (actor_id,
+ * target_id, cursor, tags, etc.) isn't part of that schema either and was already a no-op
+ * server-side before this fix — left alone, same as `fetchAlerts`'s `status`/`unreadOnly`.
+ */
 export async function listAuditHistory(filters: AuditHistoryFilters = {}) {
-  const search = new URLSearchParams();
+  const query = new URLSearchParams();
   const entries = Object.entries(filters) as Array<[keyof AuditHistoryFilters, AuditHistoryFilters[keyof AuditHistoryFilters]]>;
 
   for (const [key, value] of entries) {
     if (value === undefined || value === null || value === "") continue;
+    if (key === "start" || key === "stop") continue;
     if (key === "tags" && Array.isArray(value)) {
-      if (value.length > 0) search.set("tags", value.join(","));
+      if (value.length > 0) query.set("tags", value.join(","));
       continue;
     }
-    search.set(String(key), String(value));
+    query.set(String(key), String(value));
   }
 
-  if (!search.has("sort")) search.set("sort", "desc");
-  if (!search.has("cursor")) {
-    if (!search.has("start")) search.set("start", "0");
-    if (!search.has("stop")) search.set("stop", "20");
+  if (!query.has("sort")) query.set("sort", "desc");
+  if (!query.has("cursor")) {
+    query.set("skip", String(filters.start ?? 0));
+    query.set("limit", String(filters.stop ?? 20));
   }
 
-  const response = await apiRequest<AuditHistoryResponse>(`/v1/admins/monitoring/audit/history?${search.toString()}`);
+  const response = await apiRequest<AuditHistoryResponse>(`/v1/admins/monitoring/audit/history?${query.toString()}`);
   return response.data;
 }
 
@@ -405,11 +548,28 @@ export async function getAuditEventById(
   return response.data;
 }
 
-export async function listAdmins(start = 0, stop = 100) {
-  const response = await apiRequest<AdminProfile[]>(`/v1/admins/?start=${start}&stop=${stop}`);
-  return response.data || [];
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array
+ * — same pattern as `listCleaners`/`listCustomers`/etc. `search` is accepted by the shared
+ * `AdminListQuery` schema but unused by this route's service (`adminRepo.listAdmins` doesn't
+ * support it), so it isn't sent. No trailing slash: Hono's router is strict, and a route
+ * registered at `path: '/'` mounted at `/api/v1/admins` matches only `GET /api/v1/admins`,
+ * never `GET /api/v1/admins/`.
+ */
+export async function listAdmins(params: { limit?: number; skip?: number } = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 100));
+  query.set("skip", String(params.skip ?? 0));
+  const response = await apiRequest<{ items?: AdminProfile[] }>(`/v1/admins?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
+/**
+ * @deprecated The backend marks `POST /admins/signup` deprecated in favour of
+ * the invite flow (`inviteAdmin`), which generates and emails a temporary
+ * password and forces a change on first login. Kept only for the legacy
+ * bootstrap path; no screen calls it.
+ */
 export async function createAdmin(payload: CreateAdminRequest) {
   const response = await apiRequest<AdminProfile>("/v1/admins/signup", {
     method: "POST",
@@ -436,16 +596,33 @@ export async function reviewCleanerOnboarding(
   });
 }
 
-export async function listCleaners(start = 0, stop = 100) {
-  const response = await apiRequest<CleanerListItem[]>(`/v1/admins/cleaners?start=${start}&stop=${stop}`);
-  return response.data || [];
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array.
+ * `search` is forwarded — the `/cleaners` route passes it through to the directory service.
+ */
+export async function listCleaners(params: AdminListParams = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 100));
+  query.set("skip", String(params.skip ?? 0));
+  if (params.search) query.set("search", params.search);
+  const response = await apiRequest<{ items?: CleanerListItem[] }>(`/v1/admins/cleaners?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
-export async function listOnboardingQueue(start = 0, stop = 50, sort = "submitted_at") {
-  const response = await apiRequest<CleanerListItem[]>(
-    `/v1/admins/onboarding/queue?start=${start}&stop=${stop}&sort=${encodeURIComponent(sort)}`
-  );
-  return response.data || [];
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array.
+ * `search` is forwarded — the `/onboarding/queue` route passes it through to the directory
+ * service. The old `sort` param was never part of the backend's `AdminListQuery` schema and the
+ * route discarded it before it ever reached the service, so it's dropped rather than carried
+ * forward as dead weight.
+ */
+export async function listOnboardingQueue(params: AdminListParams = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 50));
+  query.set("skip", String(params.skip ?? 0));
+  if (params.search) query.set("search", params.search);
+  const response = await apiRequest<{ items?: CleanerListItem[] }>(`/v1/admins/onboarding/queue?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function fetchCleanerById(cleanerId: string) {
@@ -453,9 +630,17 @@ export async function fetchCleanerById(cleanerId: string) {
   return response.data;
 }
 
-export async function listCustomers(start = 0, stop = 100) {
-  const response = await apiRequest<CustomerListItem[]>(`/v1/admins/customers?start=${start}&stop=${stop}`);
-  return response.data || [];
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare array.
+ * `search` is forwarded — the `/customers` route passes it through to the directory service.
+ */
+export async function listCustomers(params: AdminListParams = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 100));
+  query.set("skip", String(params.skip ?? 0));
+  if (params.search) query.set("search", params.search);
+  const response = await apiRequest<{ items?: CustomerListItem[] }>(`/v1/admins/customers?${query.toString()}`);
+  return response.data?.items ?? [];
 }
 
 export async function fetchCustomerById(customerId: string) {
@@ -476,14 +661,20 @@ export async function autocompleteAdminUsers(query: string, limit = 10) {
   };
 }
 
-export async function listAdminCustomerPlaces(customerId: string, start = 0, stop = 20) {
-  const search = new URLSearchParams();
-  search.set("start", String(start));
-  search.set("stop", String(stop));
-  const response = await apiRequest<AdminCustomerPlaceOut[]>(
-    `/v1/admins/customers/${customerId}/places?${search.toString()}`
+/**
+ * Backend wraps this in the shared `GenericList` envelope (`{ items, total }`), not a bare
+ * array — the route handler even forces it through `GenericList.parse()`. The old
+ * `Array.isArray(response.data)` guard was always false against a real backend, so this
+ * always returned `[]`.
+ */
+export async function listAdminCustomerPlaces(customerId: string, params: { limit?: number; skip?: number } = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 20));
+  query.set("skip", String(params.skip ?? 0));
+  const response = await apiRequest<{ items?: AdminCustomerPlaceOut[] }>(
+    `/v1/admins/customers/${customerId}/places?${query.toString()}`
   );
-  return Array.isArray(response.data) ? response.data : [];
+  return response.data?.items ?? [];
 }
 
 export async function createAdminCustomerPlace(customerId: string, payload: AdminCreateCustomerPlaceRequest) {
@@ -536,10 +727,23 @@ export async function fetchUsersSignupTrend() {
   return response.data?.items || [];
 }
 
-async function listAdminResource(path: string, start = 0, stop = 100) {
-  const response = await apiRequest<AdminResourceItem[] | { items?: AdminResourceItem[] }>(
-    `${path}?start=${start}&stop=${stop}`
-  );
+/**
+ * Backing helper for the resource CRUD list functions below (service definitions, add-ons,
+ * pricing rules, etc.). These routes are backed by the backend's generic `FeatureListQuery`
+ * schema (`app/server/schemas/admin-features.ts`), which only defines `limit`/`skip` — no
+ * `search` — so none of the wrapper functions accept it either.
+ *
+ * Callers below must pass `path` with no trailing slash, same as `listAdmins` above: every
+ * one of these resources is mounted in the backend via `crudRouter()`
+ * (`app/server/routes/admin-features/_crud.ts`), whose `GET`/`POST` handlers are registered
+ * at `path: '/'`. Hono's router is strict, so `/api/v1/admins/<resource>` matches but
+ * `/api/v1/admins/<resource>/` 404s.
+ */
+async function listAdminResource(path: string, params: { limit?: number; skip?: number } = {}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? 100));
+  query.set("skip", String(params.skip ?? 0));
+  const response = await apiRequest<AdminResourceItem[] | { items?: AdminResourceItem[] }>(`${path}?${query.toString()}`);
   return normalizeAdminResourceListResponse(response.data);
 }
 
@@ -563,12 +767,12 @@ async function deleteAdminResource(path: string) {
   return apiRequest(path, { method: "DELETE" });
 }
 
-export async function listServiceDefinitions(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/service-definitions/", start, stop);
+export async function listServiceDefinitions(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/service-definitions", params);
 }
 
 export async function createServiceDefinition(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-definitions/", payload);
+  return createAdminResource("/v1/admins/service-definitions", payload);
 }
 
 export async function updateServiceDefinition(id: string, payload: AdminResourcePayload) {
@@ -579,12 +783,12 @@ export async function deleteServiceDefinition(id: string) {
   return deleteAdminResource(`/v1/admins/service-definitions/${id}`);
 }
 
-export async function listAddOns(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/add-ons/", start, stop);
+export async function listAddOns(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/add-ons", params);
 }
 
 export async function createAddOn(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/add-ons/", payload);
+  return createAdminResource("/v1/admins/add-ons", payload);
 }
 
 export async function updateAddOn(id: string, payload: AdminResourcePayload) {
@@ -595,12 +799,12 @@ export async function deleteAddOn(id: string) {
   return deleteAdminResource(`/v1/admins/add-ons/${id}`);
 }
 
-export async function listPricingRules(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/pricing-rules/", start, stop);
+export async function listPricingRules(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/pricing-rules", params);
 }
 
 export async function createPricingRule(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/pricing-rules/", payload);
+  return createAdminResource("/v1/admins/pricing-rules", payload);
 }
 
 export async function updatePricingRule(id: string, payload: AdminResourcePayload) {
@@ -611,12 +815,12 @@ export async function deletePricingRule(id: string) {
   return deleteAdminResource(`/v1/admins/pricing-rules/${id}`);
 }
 
-export async function listServiceAreas(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/service-areas/", start, stop);
+export async function listServiceAreas(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/service-areas", params);
 }
 
 export async function createServiceArea(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-areas/", payload);
+  return createAdminResource("/v1/admins/service-areas", payload);
 }
 
 export async function updateServiceArea(id: string, payload: AdminResourcePayload) {
@@ -627,12 +831,12 @@ export async function deleteServiceArea(id: string) {
   return deleteAdminResource(`/v1/admins/service-areas/${id}`);
 }
 
-export async function listPromoCodes(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/promo-codes/", start, stop);
+export async function listPromoCodes(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/promo-codes", params);
 }
 
 export async function createPromoCode(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/promo-codes/", payload);
+  return createAdminResource("/v1/admins/promo-codes", payload);
 }
 
 export async function updatePromoCode(id: string, payload: AdminResourcePayload) {
@@ -643,12 +847,12 @@ export async function deletePromoCode(id: string) {
   return deleteAdminResource(`/v1/admins/promo-codes/${id}`);
 }
 
-export async function listConciergeBookings(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/concierge-bookings/", start, stop);
+export async function listConciergeBookings(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/concierge-bookings", params);
 }
 
 export async function createConciergeBooking(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/concierge-bookings/", payload);
+  return createAdminResource("/v1/admins/concierge-bookings", payload);
 }
 
 export async function updateConciergeBooking(id: string, payload: AdminResourcePayload) {
@@ -659,12 +863,12 @@ export async function deleteConciergeBooking(id: string) {
   return deleteAdminResource(`/v1/admins/concierge-bookings/${id}`);
 }
 
-export async function listChatInterventions(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/chat-interventions/", start, stop);
+export async function listChatInterventions(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/chat-interventions", params);
 }
 
 export async function createChatIntervention(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/chat-interventions/", payload);
+  return createAdminResource("/v1/admins/chat-interventions", payload);
 }
 
 export async function updateChatIntervention(id: string, payload: AdminResourcePayload) {
@@ -675,12 +879,12 @@ export async function deleteChatIntervention(id: string) {
   return deleteAdminResource(`/v1/admins/chat-interventions/${id}`);
 }
 
-export async function listClaimReviews(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/claim-reviews/", start, stop);
+export async function listClaimReviews(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/claim-reviews", params);
 }
 
 export async function createClaimReview(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/claim-reviews/", payload);
+  return createAdminResource("/v1/admins/claim-reviews", payload);
 }
 
 export async function updateClaimReview(id: string, payload: AdminResourcePayload) {
@@ -691,12 +895,12 @@ export async function deleteClaimReview(id: string) {
   return deleteAdminResource(`/v1/admins/claim-reviews/${id}`);
 }
 
-export async function listServiceCredits(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/service-credits/", start, stop);
+export async function listServiceCredits(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/service-credits", params);
 }
 
 export async function createServiceCredit(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-credits/", payload);
+  return createAdminResource("/v1/admins/service-credits", payload);
 }
 
 export async function updateServiceCredit(id: string, payload: AdminResourcePayload) {
@@ -707,12 +911,12 @@ export async function deleteServiceCredit(id: string) {
   return deleteAdminResource(`/v1/admins/service-credits/${id}`);
 }
 
-export async function listPayoutAdjustments(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/payout-adjustments/", start, stop);
+export async function listPayoutAdjustments(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/payout-adjustments", params);
 }
 
 export async function createPayoutAdjustment(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/payout-adjustments/", payload);
+  return createAdminResource("/v1/admins/payout-adjustments", payload);
 }
 
 export async function updatePayoutAdjustment(id: string, payload: AdminResourcePayload) {
@@ -723,12 +927,12 @@ export async function deletePayoutAdjustment(id: string) {
   return deleteAdminResource(`/v1/admins/payout-adjustments/${id}`);
 }
 
-export async function listBroadcasts(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/broadcasts/", start, stop);
+export async function listBroadcasts(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/broadcasts", params);
 }
 
 export async function createBroadcast(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/broadcasts/", payload);
+  return createAdminResource("/v1/admins/broadcasts", payload);
 }
 
 export async function updateBroadcast(id: string, payload: AdminResourcePayload) {
@@ -739,12 +943,12 @@ export async function deleteBroadcast(id: string) {
   return deleteAdminResource(`/v1/admins/broadcasts/${id}`);
 }
 
-export async function listCleanerTags(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/cleaner-tags/", start, stop);
+export async function listCleanerTags(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/cleaner-tags", params);
 }
 
 export async function createCleanerTag(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/cleaner-tags/", payload);
+  return createAdminResource("/v1/admins/cleaner-tags", payload);
 }
 
 export async function updateCleanerTag(id: string, payload: AdminResourcePayload) {
@@ -755,12 +959,12 @@ export async function deleteCleanerTag(id: string) {
   return deleteAdminResource(`/v1/admins/cleaner-tags/${id}`);
 }
 
-export async function listAvailabilityOverrides(start = 0, stop = 100) {
-  return listAdminResource("/v1/admins/availability-overrides/", start, stop);
+export async function listAvailabilityOverrides(params: { limit?: number; skip?: number } = {}) {
+  return listAdminResource("/v1/admins/availability-overrides", params);
 }
 
 export async function createAvailabilityOverride(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/availability-overrides/", payload);
+  return createAdminResource("/v1/admins/availability-overrides", payload);
 }
 
 export async function updateAvailabilityOverride(id: string, payload: AdminResourcePayload) {

@@ -25,7 +25,7 @@ export default function ChatInterventionsPage() {
         { key: "action", label: "Action", type: "text", required: true, placeholder: "warn|mute|escalate" },
         { key: "note", label: "Note", type: "textarea" },
       ]}
-      listFn={() => listChatInterventions(0, 100)}
+      listFn={() => listChatInterventions({ skip: 0, limit: 100 })}
       createFn={createChatIntervention}
       updateFn={updateChatIntervention}
       deleteFn={deleteChatIntervention}
