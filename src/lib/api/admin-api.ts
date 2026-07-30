@@ -14,6 +14,7 @@ import type {
   DecideElevationRequestPayload,
   DecideElevationResponse,
   AdminLoginResponse,
+  AccessPresetBulkResult,
   AccessPresetSummary,
   AlertSlaMetrics,
   PlaceDetailsOut,
@@ -188,7 +189,7 @@ export async function verifyAdminOtp(challengeId: string, code: string) {
 }
 
 export async function changeAdminPassword(currentPassword: string, newPassword: string) {
-  const response = await apiRequest<unknown>("/v1/admins/change-password", {
+  const response = await apiRequest<{ ok: boolean }>("/v1/admins/change-password", {
     method: "POST",
     body: JSON.stringify({ currentPassword, newPassword }),
   });
@@ -218,7 +219,8 @@ export async function verifyTotp(code: string) {
 }
 
 export async function disableTotp(code: string) {
-  const response = await apiRequest<unknown>("/v1/admins/2fa", {
+  // Backend responds with an intentionally empty object (`envelopeOf(z.object({}))`).
+  const response = await apiRequest<Record<string, never>>("/v1/admins/2fa", {
     method: "DELETE",
     body: JSON.stringify({ code }),
   });
@@ -242,19 +244,23 @@ export async function inviteAdmin(payload: { email: string; fullName: string; ac
 }
 
 export async function resendAdminInvite(adminId: string) {
-  const response = await apiRequest<unknown>(`/v1/admins/invites/${adminId}/resend`, {
+  const response = await apiRequest<AdminProfile>(`/v1/admins/invites/${adminId}/resend`, {
     method: "POST",
   });
   return response.data;
 }
 
+/**
+ * Backend wraps the catalog in `{ items: [...] }` (`AccessPresetCatalogOut`) — not
+ * a bare array. Unwrap here so callers (Task 6's `.map()`) get the array directly.
+ */
 export async function listAccessPresets() {
-  const response = await apiRequest<AccessPresetSummary[]>("/v1/admins/access-presets");
-  return response.data;
+  const response = await apiRequest<{ items: AccessPresetSummary[] }>("/v1/admins/access-presets");
+  return response.data.items;
 }
 
 export async function setAdminAccessPreset(adminId: string, preset: string) {
-  const response = await apiRequest<unknown>(`/v1/admins/${adminId}/access-preset`, {
+  const response = await apiRequest<AdminProfile>(`/v1/admins/${adminId}/access-preset`, {
     method: "PATCH",
     body: JSON.stringify({ preset }),
   });
@@ -262,7 +268,7 @@ export async function setAdminAccessPreset(adminId: string, preset: string) {
 }
 
 export async function bulkSetAdminAccessPreset(adminIds: string[], preset: string) {
-  const response = await apiRequest<unknown>("/v1/admins/access-presets/bulk", {
+  const response = await apiRequest<AccessPresetBulkResult>("/v1/admins/access-presets/bulk", {
     method: "POST",
     body: JSON.stringify({ adminIds, preset }),
   });

@@ -76,6 +76,12 @@ export interface AccessPresetSummary {
   permissionCount: number;
 }
 
+/** `POST /admins/access-presets/bulk` response. */
+export interface AccessPresetBulkResult {
+  updated: number;
+  skipped: Array<{ id: string; reason: string }>;
+}
+
 export interface PermissionGroupPermission {
   key?: string;
   name?: string;

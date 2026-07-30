@@ -18,6 +18,12 @@ export function adminAuthErrorCopy(error: ApiError): string {
       return "Your temporary password expired. Ask an admin to resend your invite.";
     case "INVALID_CREDENTIALS":
       return "That email and password don't match.";
+    case "TOTP_INVALID":
+      return "That code isn't right. Try again, or use a backup code.";
+    case "PASSWORD_CHANGE_REQUIRED":
+      return "Change your password to continue.";
+    case "FORBIDDEN":
+      return "You don't have permission to do that.";
     default:
       break;
   }

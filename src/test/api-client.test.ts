@@ -71,7 +71,9 @@ describe("apiRequest", () => {
 
     const fetchMock = getFetchMock();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ success: false, message: "unauthorized", code: "AUTH_INVALID" }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: false, message: "unauthorized", data: { code: "AUTH_INVALID", details: null }, requestId: "req_test" }, 401)
+      )
       .mockResolvedValueOnce(jsonResponse({ success: false, message: "unauthorized" }, 401));
 
     await expect(apiRequest("/v1/admins/profile")).rejects.toMatchObject({ status: 401 });

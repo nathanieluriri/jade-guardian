@@ -34,6 +34,18 @@ function getFetchMock(): FetchMock {
   return global.fetch as unknown as FetchMock;
 }
 
+/**
+ * Real envelope shape for an error response: `{success, message, data, requestId}`
+ * with the error code nested at `data.code` (never top-level) — see the Global
+ * Constraints in the phase plan and `parseError` in `client.ts`. Mocks that put
+ * `code` at the top level would still pass through `parseError`'s first
+ * (wrong) branch and mask a regression in the `data.code` fallback it's
+ * actually meant to exercise.
+ */
+function errorEnvelope(message: string, code: string, requestId = "req_test") {
+  return { success: false, message, data: { code, details: null }, requestId };
+}
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -101,7 +113,7 @@ describe("useAdminLoginFlow", () => {
     const fetchMock = getFetchMock();
     fetchMock
       .mockResolvedValueOnce(otpChallengeResponse)
-      .mockResolvedValueOnce(jsonResponse({ success: false, message: "Invalid code", code: "OTP_INVALID" }, 401));
+      .mockResolvedValueOnce(jsonResponse(errorEnvelope("Invalid code", "OTP_INVALID"), 401));
 
     const { result } = renderHook(() => useAdminLoginFlow(), { wrapper });
 
@@ -123,7 +135,7 @@ describe("useAdminLoginFlow", () => {
     const fetchMock = getFetchMock();
     fetchMock
       .mockResolvedValueOnce(otpChallengeResponse)
-      .mockResolvedValueOnce(jsonResponse({ success: false, message: "Locked", code: "OTP_LOCKED" }, 429));
+      .mockResolvedValueOnce(jsonResponse(errorEnvelope("Locked", "OTP_LOCKED"), 429));
 
     const { result } = renderHook(() => useAdminLoginFlow(), { wrapper });
 
@@ -203,7 +215,7 @@ describe("useAdminLoginFlow", () => {
     const fetchMock = getFetchMock();
     fetchMock
       .mockResolvedValueOnce(otpChallengeResponse)
-      .mockResolvedValueOnce(jsonResponse({ success: false, message: "Invalid code", code: "OTP_INVALID" }, 401));
+      .mockResolvedValueOnce(jsonResponse(errorEnvelope("Invalid code", "OTP_INVALID"), 401));
 
     const { result } = renderHook(() => useAdminLoginFlow(), { wrapper });
 
@@ -289,7 +301,7 @@ describe("useChangePassword", () => {
     const { wrapper, queryClient } = createWrapper();
     const fetchMock = getFetchMock();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ success: true, message: "ok", data: null }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, message: "Password changed", data: { ok: true } }))
       .mockResolvedValueOnce(profileResponse({ mustChangePassword: false }));
 
     const { result } = renderHook(() => useChangePassword(), { wrapper });
@@ -321,6 +333,15 @@ describe("adminAuthErrorCopy", () => {
     );
     expect(adminAuthErrorCopy({ status: 401, code: "INVALID_CREDENTIALS", message: "x" })).toBe(
       "That email and password don't match."
+    );
+    expect(adminAuthErrorCopy({ status: 401, code: "TOTP_INVALID", message: "x" })).toBe(
+      "That code isn't right. Try again, or use a backup code."
+    );
+    expect(adminAuthErrorCopy({ status: 403, code: "PASSWORD_CHANGE_REQUIRED", message: "x" })).toBe(
+      "Change your password to continue."
+    );
+    expect(adminAuthErrorCopy({ status: 403, code: "FORBIDDEN", message: "x" })).toBe(
+      "You don't have permission to do that."
     );
   });
 
