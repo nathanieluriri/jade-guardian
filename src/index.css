@@ -29,6 +29,8 @@
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
+    /* Readable destructive text on a tinted destructive surface (error pills). */
+    --destructive-strong: 0 72% 38%;
 
     --warning: 25 95% 53%;
     --warning-foreground: 25 95% 20%;
@@ -61,6 +63,14 @@
     /* Cleanm-specific tokens */
     --surface-shadow: 0 0 0 1px hsla(142, 20%, 80%, 0.4), 0 1px 3px hsla(142, 20%, 50%, 0.08);
     --surface-shadow-hover: 0 0 0 1px hsla(142, 20%, 70%, 0.5), 0 4px 12px hsla(142, 30%, 50%, 0.12);
+
+    /* Auth-screen elevation (login / change-password cards, fields, brand CTA).
+       Every value is derived from an existing colour token — no literals. */
+    --shadow-auth-card: 0 12px 40px -12px hsl(var(--foreground) / 0.08);
+    --shadow-auth-field: 0 1px 2px hsl(var(--foreground) / 0.05);
+    --shadow-brand: 0 6px 20px -6px hsl(var(--primary) / 0.45);
+    --shadow-brand-hover: 0 10px 26px -8px hsl(var(--primary) / 0.55);
+    --shadow-brand-soft: 0 4px 14px -6px hsl(var(--primary) / 0.35);
     --emerald-50: 142 77% 96%;
     --emerald-100: 142 70% 92%;
     --emerald-200: 142 64% 83%;

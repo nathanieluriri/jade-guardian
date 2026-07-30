@@ -15,7 +15,7 @@ import { resolveFirstAllowedAdminRoute } from "@/lib/admin-access";
 import { adminAuthErrorCopy } from "@/lib/api/auth-errors";
 import type { ApiError } from "@/lib/api/types";
 
-const ADMIN_PROFILE_QUERY_KEY = ["admin-profile"];
+export const ADMIN_PROFILE_QUERY_KEY = ["admin-profile"];
 
 export type LoginStep =
   | { kind: "credentials" }
