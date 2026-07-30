@@ -714,6 +714,12 @@ export async function fetchUsersSignupTrend() {
  * pricing rules, etc.). These routes are backed by the backend's generic `FeatureListQuery`
  * schema (`app/server/schemas/admin-features.ts`), which only defines `limit`/`skip` — no
  * `search` — so none of the wrapper functions accept it either.
+ *
+ * Callers below must pass `path` with no trailing slash, same as `listAdmins` above: every
+ * one of these resources is mounted in the backend via `crudRouter()`
+ * (`app/server/routes/admin-features/_crud.ts`), whose `GET`/`POST` handlers are registered
+ * at `path: '/'`. Hono's router is strict, so `/api/v1/admins/<resource>` matches but
+ * `/api/v1/admins/<resource>/` 404s.
  */
 async function listAdminResource(path: string, params: { limit?: number; skip?: number } = {}) {
   const query = new URLSearchParams();
@@ -744,11 +750,11 @@ async function deleteAdminResource(path: string) {
 }
 
 export async function listServiceDefinitions(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/service-definitions/", params);
+  return listAdminResource("/v1/admins/service-definitions", params);
 }
 
 export async function createServiceDefinition(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-definitions/", payload);
+  return createAdminResource("/v1/admins/service-definitions", payload);
 }
 
 export async function updateServiceDefinition(id: string, payload: AdminResourcePayload) {
@@ -760,11 +766,11 @@ export async function deleteServiceDefinition(id: string) {
 }
 
 export async function listAddOns(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/add-ons/", params);
+  return listAdminResource("/v1/admins/add-ons", params);
 }
 
 export async function createAddOn(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/add-ons/", payload);
+  return createAdminResource("/v1/admins/add-ons", payload);
 }
 
 export async function updateAddOn(id: string, payload: AdminResourcePayload) {
@@ -776,11 +782,11 @@ export async function deleteAddOn(id: string) {
 }
 
 export async function listPricingRules(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/pricing-rules/", params);
+  return listAdminResource("/v1/admins/pricing-rules", params);
 }
 
 export async function createPricingRule(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/pricing-rules/", payload);
+  return createAdminResource("/v1/admins/pricing-rules", payload);
 }
 
 export async function updatePricingRule(id: string, payload: AdminResourcePayload) {
@@ -792,11 +798,11 @@ export async function deletePricingRule(id: string) {
 }
 
 export async function listServiceAreas(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/service-areas/", params);
+  return listAdminResource("/v1/admins/service-areas", params);
 }
 
 export async function createServiceArea(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-areas/", payload);
+  return createAdminResource("/v1/admins/service-areas", payload);
 }
 
 export async function updateServiceArea(id: string, payload: AdminResourcePayload) {
@@ -808,11 +814,11 @@ export async function deleteServiceArea(id: string) {
 }
 
 export async function listPromoCodes(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/promo-codes/", params);
+  return listAdminResource("/v1/admins/promo-codes", params);
 }
 
 export async function createPromoCode(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/promo-codes/", payload);
+  return createAdminResource("/v1/admins/promo-codes", payload);
 }
 
 export async function updatePromoCode(id: string, payload: AdminResourcePayload) {
@@ -824,11 +830,11 @@ export async function deletePromoCode(id: string) {
 }
 
 export async function listConciergeBookings(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/concierge-bookings/", params);
+  return listAdminResource("/v1/admins/concierge-bookings", params);
 }
 
 export async function createConciergeBooking(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/concierge-bookings/", payload);
+  return createAdminResource("/v1/admins/concierge-bookings", payload);
 }
 
 export async function updateConciergeBooking(id: string, payload: AdminResourcePayload) {
@@ -840,11 +846,11 @@ export async function deleteConciergeBooking(id: string) {
 }
 
 export async function listChatInterventions(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/chat-interventions/", params);
+  return listAdminResource("/v1/admins/chat-interventions", params);
 }
 
 export async function createChatIntervention(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/chat-interventions/", payload);
+  return createAdminResource("/v1/admins/chat-interventions", payload);
 }
 
 export async function updateChatIntervention(id: string, payload: AdminResourcePayload) {
@@ -856,11 +862,11 @@ export async function deleteChatIntervention(id: string) {
 }
 
 export async function listClaimReviews(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/claim-reviews/", params);
+  return listAdminResource("/v1/admins/claim-reviews", params);
 }
 
 export async function createClaimReview(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/claim-reviews/", payload);
+  return createAdminResource("/v1/admins/claim-reviews", payload);
 }
 
 export async function updateClaimReview(id: string, payload: AdminResourcePayload) {
@@ -872,11 +878,11 @@ export async function deleteClaimReview(id: string) {
 }
 
 export async function listServiceCredits(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/service-credits/", params);
+  return listAdminResource("/v1/admins/service-credits", params);
 }
 
 export async function createServiceCredit(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/service-credits/", payload);
+  return createAdminResource("/v1/admins/service-credits", payload);
 }
 
 export async function updateServiceCredit(id: string, payload: AdminResourcePayload) {
@@ -888,11 +894,11 @@ export async function deleteServiceCredit(id: string) {
 }
 
 export async function listPayoutAdjustments(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/payout-adjustments/", params);
+  return listAdminResource("/v1/admins/payout-adjustments", params);
 }
 
 export async function createPayoutAdjustment(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/payout-adjustments/", payload);
+  return createAdminResource("/v1/admins/payout-adjustments", payload);
 }
 
 export async function updatePayoutAdjustment(id: string, payload: AdminResourcePayload) {
@@ -904,11 +910,11 @@ export async function deletePayoutAdjustment(id: string) {
 }
 
 export async function listBroadcasts(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/broadcasts/", params);
+  return listAdminResource("/v1/admins/broadcasts", params);
 }
 
 export async function createBroadcast(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/broadcasts/", payload);
+  return createAdminResource("/v1/admins/broadcasts", payload);
 }
 
 export async function updateBroadcast(id: string, payload: AdminResourcePayload) {
@@ -920,11 +926,11 @@ export async function deleteBroadcast(id: string) {
 }
 
 export async function listCleanerTags(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/cleaner-tags/", params);
+  return listAdminResource("/v1/admins/cleaner-tags", params);
 }
 
 export async function createCleanerTag(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/cleaner-tags/", payload);
+  return createAdminResource("/v1/admins/cleaner-tags", payload);
 }
 
 export async function updateCleanerTag(id: string, payload: AdminResourcePayload) {
@@ -936,11 +942,11 @@ export async function deleteCleanerTag(id: string) {
 }
 
 export async function listAvailabilityOverrides(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/availability-overrides/", params);
+  return listAdminResource("/v1/admins/availability-overrides", params);
 }
 
 export async function createAvailabilityOverride(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/availability-overrides/", payload);
+  return createAdminResource("/v1/admins/availability-overrides", payload);
 }
 
 export async function updateAvailabilityOverride(id: string, payload: AdminResourcePayload) {

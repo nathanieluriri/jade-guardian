@@ -69,7 +69,7 @@ export function ChangePasswordScreen() {
         queryClient.getQueryData<AdminProfile>(ADMIN_PROFILE_QUERY_KEY) ?? profileQuery.data;
       router.replace(resolveFirstAllowedAdminRoute(profile));
     } catch (err) {
-      setError(adminAuthErrorCopy(err as ApiError));
+      setError(adminAuthErrorCopy(err as ApiError, "change-password"));
     }
   }
 

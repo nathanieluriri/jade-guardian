@@ -28,6 +28,7 @@ import { setAuthHint } from "@/lib/api/auth-storage";
 
 const CHANGE_URL = "/api/v1/admins/change-password";
 const PROFILE_URL = "/api/v1/admins/profile";
+const REFRESH_URL = "/api/v1/admins/refresh";
 
 type StubbedResponse = { body: unknown; status?: number };
 
@@ -159,19 +160,66 @@ describe("admin change-password screen", () => {
     expect(mockToastSuccess).toHaveBeenCalled();
   });
 
-  it("surfaces a rejected change in the role=alert pill", async () => {
+  it("still reports success and redirects when the post-success profile refetch fails", async () => {
+    // The mutation itself (POST /change-password) succeeds once; every profile GET issued
+    // after it fails (a 500 stands in for a transient failure). Pins the useChangePassword
+    // fix: the follow-up refetch is isolated in its own try/catch so its failure can never
+    // surface as a submission failure for an already-irreversible password change.
+    stubRoutes({
+      [CHANGE_URL]: [{ body: envelope({ ok: true }) }],
+      [PROFILE_URL]: [
+        SUPER_ADMIN_PROFILE,
+        {
+          body: { success: false, message: "Server error", data: { code: "INTERNAL_ERROR", details: null } },
+          status: 500,
+        },
+      ],
+    });
+    renderScreen();
+
+    // Wait for the initial profile load to land in the cache before submitting, so a
+    // stale-but-valid profile exists for the redirect target once the post-mutation
+    // refetch starts failing.
+    await waitFor(() => expect(screen.getByText("admin@example.com")).toBeInTheDocument());
+
+    fillForm({ current: "TempPass-123", next: "a-brand-new-password", confirm: "a-brand-new-password" });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+    });
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/admin/overview"));
+    expect(mockToastSuccess).toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("maps a wrong current password to current-password copy, not the login email/password copy", async () => {
+    // The real backend (`admin-service.ts`'s `changePassword`) throws the exact same
+    // `INVALID_CREDENTIALS` / "Invalid email or password" that `login` throws for a bad
+    // password — see ADMIN_AUTH.md's error table ("Wrong email/password (or wrong current
+    // password)"). This screen has no email field, so the generic login copy would be a
+    // non-sequitur here; `adminAuthErrorCopy(error, "change-password")` must remap it.
+    //
+    // The 401 status is realistic (matches the backend exactly) but also means the api
+    // client's generic refresh-and-retry interceptor (`client.ts`'s `apiRequest`, which
+    // can't distinguish "session expired" from "wrong password, session still fine") fires
+    // first: it refreshes (the admin's session is otherwise valid) and retries the change
+    // request once, which fails the same way. Both the refresh endpoint and a second
+    // CHANGE_URL hit need stubs; CHANGE_URL's single queued entry is sticky, so it already
+    // answers the retry with the same error.
     stubRoutes({
       [CHANGE_URL]: [
         {
           body: {
             success: false,
-            message: "Current password is incorrect",
-            data: { code: "VALIDATION_ERROR", details: null },
+            message: "Invalid email or password",
+            data: { code: "INVALID_CREDENTIALS", details: null },
           },
-          status: 400,
+          status: 401,
         },
       ],
       [PROFILE_URL]: [SUPER_ADMIN_PROFILE],
+      [REFRESH_URL]: [{ body: envelope({}) }],
     });
     renderScreen();
 
@@ -182,7 +230,7 @@ describe("admin change-password screen", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("Current password is incorrect")
+      expect(screen.getByRole("alert")).toHaveTextContent("That current password isn't right.")
     );
     expect(mockReplace).not.toHaveBeenCalled();
   });

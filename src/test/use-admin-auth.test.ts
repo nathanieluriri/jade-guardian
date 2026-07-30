@@ -315,6 +315,31 @@ describe("useChangePassword", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/admins/profile");
     expect(queryClient.getQueryData(["admin-profile"])).toMatchObject({ mustChangePassword: false });
   });
+
+  it("resolves mutateAsync as a success even when the post-success profile refetch fails", async () => {
+    // TanStack Query awaits `onSuccess` as part of the mutation's own execute() — a promise
+    // it returns that rejects flips the mutation to `error` and rejects `mutateAsync`, even
+    // though `changeAdminPassword` (this mutationFn) already succeeded. The password change
+    // is irreversible; a transient failure fetching the follow-up profile must not be
+    // reported to the caller as a failed submission.
+    const { wrapper } = createWrapper();
+    const fetchMock = getFetchMock();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ success: true, message: "Password changed", data: { ok: true } }))
+      .mockRejectedValueOnce(new Error("network blip"));
+
+    const { result } = renderHook(() => useChangePassword(), { wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ currentPassword: "old-pw", newPassword: "new-password" })
+      ).resolves.toEqual({ ok: true });
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.isError).toBe(false);
+  });
 });
 
 describe("adminAuthErrorCopy", () => {
@@ -347,6 +372,15 @@ describe("adminAuthErrorCopy", () => {
 
   it("maps a 429 without a recognized code to a generic rate-limit message", () => {
     expect(adminAuthErrorCopy({ status: 429, message: "x" })).toBe("Too many attempts. Wait a minute and try again.");
+  });
+
+  it("remaps INVALID_CREDENTIALS to current-password copy under the change-password context, and leaves login copy the default", () => {
+    expect(
+      adminAuthErrorCopy({ status: 401, code: "INVALID_CREDENTIALS", message: "x" }, "change-password")
+    ).toBe("That current password isn't right.");
+    expect(
+      adminAuthErrorCopy({ status: 401, code: "INVALID_CREDENTIALS", message: "x" }, "login")
+    ).toBe("That email and password don't match.");
   });
 
   it("falls back to the raw error message for anything else", () => {
