@@ -262,6 +262,19 @@ export interface RoleTemplate {
   };
 }
 
+/**
+ * Shared pagination/search shape accepted by the backend's `AdminListQuery` schema
+ * (`limit`/`skip`/`search` — see `app/server/schemas/admin-core.ts` in the backend
+ * repo). Individual routes vary in which of these three they actually forward to
+ * their service (some accept `search` in the schema but never read it); each
+ * `admin-api.ts` function's own doc comment notes whether search is honored.
+ */
+export interface AdminListParams {
+  limit?: number;
+  skip?: number;
+  search?: string;
+}
+
 export interface CleanerListItem {
   id?: string;
   _id?: string;

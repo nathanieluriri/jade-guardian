@@ -41,11 +41,11 @@ export default function OverviewPage() {
   const heatmapQuery = useQuery({ queryKey: ["overview", "heatmap"], queryFn: () => fetchAuthHeatmap(14) });
   const alertsQuery = useQuery({
     queryKey: ["overview", "alerts"],
-    queryFn: () => fetchAlerts({ start: 0, stop: 4 }),
+    queryFn: () => fetchAlerts({ skip: 0, limit: 4 }),
   });
   const openAlertAttentionQuery = useQuery({
     queryKey: ["open-alert-attention-count"],
-    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, start: 0, stop: 99 }),
+    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, skip: 0, limit: 99 }),
     refetchInterval: 30_000,
   });
   const slaQuery = useQuery({ queryKey: ["overview", "sla"], queryFn: () => fetchAlertSla(24) });

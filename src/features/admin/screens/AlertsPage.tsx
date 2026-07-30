@@ -89,8 +89,8 @@ export default function AlertsPage() {
     queryKey: ["alerts", "center"],
     queryFn: () =>
       fetchAlerts({
-        start: 0,
-        stop: 80,
+        skip: 0,
+        limit: 80,
       }),
   });
 

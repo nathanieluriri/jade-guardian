@@ -50,8 +50,8 @@ export default function AccessRequestsPage() {
   const queryClient = useQueryClient();
   const profileQuery = useAdminProfile();
   const [filter, setFilter] = useState<StatusFilter>("PENDING");
-  const [start, setStart] = useState(0);
-  const [stop] = useState(50);
+  const [skip, setSkip] = useState(0);
+  const [limit] = useState(50);
   const [activeRequest, setActiveRequest] = useState<ElevationRequestItem | null>(null);
   const [decisionChoice, setDecisionChoice] = useState<DecisionChoice>("APPROVED_FULL");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
@@ -63,12 +63,12 @@ export default function AccessRequestsPage() {
   );
 
   const requestsQuery = useQuery({
-    queryKey: ["admin-access", "requests", { filter, start, stop }],
+    queryKey: ["admin-access", "requests", { filter, skip, limit }],
     queryFn: () =>
       listElevationRequests({
         status: filter === "ALL" ? undefined : filter,
-        start,
-        stop,
+        skip,
+        limit,
       }),
   });
 
@@ -146,16 +146,16 @@ export default function AccessRequestsPage() {
             <RefreshCw className={`h-4 w-4 ${requestsQuery.isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setStart(Math.max(0, start - stop))} disabled={start === 0}>
+          <Button variant="outline" size="sm" onClick={() => setSkip(Math.max(0, skip - limit))} disabled={skip === 0}>
             Previous
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setStart(start + stop)}>
+          <Button variant="outline" size="sm" onClick={() => setSkip(skip + limit)}>
             Next
           </Button>
         </div>
       </div>
 
-      <Tabs value={filter} onValueChange={(value) => { setFilter(value as StatusFilter); setStart(0); }}>
+      <Tabs value={filter} onValueChange={(value) => { setFilter(value as StatusFilter); setSkip(0); }}>
         <TabsList>
           <TabsTrigger value="PENDING">Pending</TabsTrigger>
           <TabsTrigger value="APPROVED">Approved</TabsTrigger>

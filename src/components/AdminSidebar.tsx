@@ -165,13 +165,13 @@ export function AdminSidebar() {
   const { resolvedTheme, setTheme } = useTheme();
   const alertsQuery = useQuery({
     queryKey: ["open-alert-attention-count"],
-    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, start: 0, stop: 99 }),
+    queryFn: () => fetchAlerts({ status: "open", unreadOnly: true, skip: 0, limit: 99 }),
     refetchInterval: 30_000,
     enabled: canAccessRoute("/admin/security/alerts"),
   });
   const pendingElevationQuery = useQuery({
     queryKey: ["pending-elevation-request-count"],
-    queryFn: () => listElevationRequests({ status: "PENDING", start: 0, stop: 200 }),
+    queryFn: () => listElevationRequests({ status: "PENDING", skip: 0, limit: 200 }),
     refetchInterval: 30_000,
     enabled: canAccessRoute("/admin/access/requests"),
   });

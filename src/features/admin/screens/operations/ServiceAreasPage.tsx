@@ -25,7 +25,7 @@ export default function ServiceAreasPage() {
         { key: "boundary_geojson", label: "Boundary GeoJSON", type: "textarea", placeholder: "{\"type\":\"Polygon\",...}" },
         { key: "is_active", label: "Active", type: "boolean" },
       ]}
-      listFn={() => listServiceAreas(0, 100)}
+      listFn={() => listServiceAreas({ skip: 0, limit: 100 })}
       createFn={createServiceArea}
       updateFn={updateServiceArea}
       deleteFn={deleteServiceArea}

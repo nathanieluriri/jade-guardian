@@ -26,7 +26,7 @@ export default function AvailabilityOverridesPage() {
         { key: "reason", label: "Reason", type: "textarea", required: true },
         { key: "is_active", label: "Active", type: "boolean" },
       ]}
-      listFn={() => listAvailabilityOverrides(0, 100)}
+      listFn={() => listAvailabilityOverrides({ skip: 0, limit: 100 })}
       createFn={createAvailabilityOverride}
       updateFn={updateAvailabilityOverride}
       deleteFn={deleteAvailabilityOverride}

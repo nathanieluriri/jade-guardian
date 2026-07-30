@@ -35,13 +35,13 @@ export function CommandBar() {
   const { allowedRoutes, canAccessRoute } = useAdminAccess();
   const alertsQuery = useQuery({
     queryKey: ["command-alerts"],
-    queryFn: () => fetchAlerts({ start: 0, stop: 6 }),
+    queryFn: () => fetchAlerts({ skip: 0, limit: 6 }),
     staleTime: 30_000,
     enabled: canAccessRoute("/admin/security/alerts"),
   });
   const pendingElevationQuery = useQuery({
     queryKey: ["pending-elevation-request-count"],
-    queryFn: () => listElevationRequests({ status: "PENDING", start: 0, stop: 200 }),
+    queryFn: () => listElevationRequests({ status: "PENDING", skip: 0, limit: 200 }),
     staleTime: 30_000,
     enabled: canAccessRoute("/admin/access/requests"),
   });

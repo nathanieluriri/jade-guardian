@@ -58,8 +58,8 @@ function exportInviteText(email: string) {
 export default function TeamPage() {
   const queryClient = useQueryClient();
   const profileQuery = useAdminProfile();
-  const [start, setStart] = useState(0);
-  const [stop] = useState(20);
+  const [skip, setSkip] = useState(0);
+  const [limit] = useState(20);
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -68,8 +68,8 @@ export default function TeamPage() {
   const canDeleteOwnAccount = canAccessAdminAction({ method: "DELETE", path: "/v1/admins/account" }, profileQuery.data);
 
   const adminsQuery = useQuery({
-    queryKey: ["admins", { start, stop, search }],
-    queryFn: () => listAdmins(start, stop),
+    queryKey: ["admins", { skip, limit, search }],
+    queryFn: () => listAdmins({ skip, limit }),
   });
 
   const createMutation = useMutation({
@@ -164,10 +164,10 @@ export default function TeamPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by ID, email, or name" className="sm:max-w-sm" />
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setStart(Math.max(0, start - stop))}>
+            <Button variant="outline" size="sm" onClick={() => setSkip(Math.max(0, skip - limit))}>
               Previous
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setStart(start + stop)}>
+            <Button variant="outline" size="sm" onClick={() => setSkip(skip + limit)}>
               Next
             </Button>
           </div>
