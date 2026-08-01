@@ -410,9 +410,34 @@ export async function updateAlertAckState(alertId: string, ack: boolean) {
   });
 }
 
-export async function fetchSessionAnomalies() {
-  const response = await apiRequest<SessionAnomalies>("/v1/admins/monitoring/sessions/anomalies");
-  return response.data;
+/**
+ * The spec types this endpoint's `data` as a passthrough `AdminGenericObject`, so the
+ * `SessionAnomalies` interface is a claim the runtime does not honor. Normalizing here
+ * rather than in the component keeps every consumer safe: SessionsPage previously white-
+ * screened on `Object.entries(undefined)`.
+ */
+export async function fetchSessionAnomalies(): Promise<SessionAnomalies> {
+  const response = await apiRequest<Partial<SessionAnomalies> | null>(
+    "/v1/admins/monitoring/sessions/anomalies",
+  );
+  const data = (response.data ?? {}) as Partial<SessionAnomalies>;
+
+  const rawCounts = data.active_sessions_by_admin;
+  const active_sessions_by_admin: Record<string, number> = {};
+  if (rawCounts && typeof rawCounts === "object") {
+    for (const [adminId, count] of Object.entries(rawCounts)) {
+      if (typeof count === "number" && Number.isFinite(count)) {
+        active_sessions_by_admin[adminId] = count;
+      }
+    }
+  }
+
+  return {
+    active_sessions_by_admin,
+    global_active_sessions: typeof data.global_active_sessions === "number" ? data.global_active_sessions : 0,
+    long_lived_session_count: typeof data.long_lived_session_count === "number" ? data.long_lived_session_count : 0,
+    recent_session_spike_detected: data.recent_session_spike_detected === true,
+  };
 }
 
 export async function revokeCurrentSession() {
