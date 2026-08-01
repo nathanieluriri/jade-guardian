@@ -1247,133 +1247,202 @@ Deleting a CRUD record currently waits for the round trip before the row disappe
 optimistic removal with rollback on error makes the action feel instant while staying
 honest when the server rejects it.
 
+The optimistic logic is extracted into a pure factory rather than written inline in the
+mutation. Inline handlers can only be reached by driving a confirmation dialog, which
+tests the dialog rather than the rollback; a factory taking an explicit `QueryClient`
+lets the cache transitions be asserted directly.
+
 **Files:**
+- Create: `src/features/admin/screens/operations/optimistic-delete.ts`
 - Modify: `src/features/admin/screens/operations/OperationsCrudPage.tsx` (the delete mutation)
-- Test: `src/test/operations-crud-optimistic.test.tsx` (create)
+- Test: `src/test/optimistic-delete.test.ts` (create)
 
 **Interfaces:**
-- Consumes: `useQueryClient()`; the `queryKey` prop from `OperationsCrudPageProps`; `itemId(item)` already defined at `OperationsCrudPage.tsx:62`.
-- Produces: no prop changes. Behavior only.
+- Consumes: `QueryClient` from `@tanstack/react-query`; `AdminResourceItem` from `@/lib/api/types`; `itemId(item)` currently defined at `OperationsCrudPage.tsx:62`.
+- Produces: `optimisticDeleteHandlers(client: QueryClient, queryKey: string)` returning `{ onMutate(id: string): Promise<{ previous?: AdminResourceItem[] }>, onError(error: unknown, id: string, context?: { previous?: AdminResourceItem[] }): void, onSettled(): void }`. Also exports `itemId(item: AdminResourceItem): string`, moved here so both modules share one definition.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/test/operations-crud-optimistic.test.tsx`:
+Create `src/test/optimistic-delete.test.ts`:
 
-```tsx
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { OperationsCrudPage } from "@/features/admin/screens/operations/OperationsCrudPage";
+```ts
+import { describe, expect, it } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
+import type { AdminResourceItem } from "@/lib/api/types";
 
-vi.mock("@/hooks/use-admin-auth", () => ({ useAdminProfile: () => ({ data: undefined }) }));
-vi.mock("@/lib/admin-access", () => ({ canAccessAdminAction: () => true }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-
-const ITEMS = [
+const ITEMS: AdminResourceItem[] = [
   { id: "1", display_name: "Home Cleaning" },
   { id: "2", display_name: "Deep Cleaning" },
 ];
 
-function renderPage(client: QueryClient, deleteFn: (id: string) => Promise<unknown>) {
-  return render(
-    <QueryClientProvider client={client}>
-      <OperationsCrudPage
-        title="Service Definitions"
-        description="test"
-        queryKey="service-definitions"
-        readRequirement={{ method: "GET", path: "/x" }}
-        createRequirement={{ method: "POST", path: "/x" }}
-        updateRequirement={{ method: "PATCH", path: "/x" }}
-        deleteRequirement={{ method: "DELETE", path: "/x" }}
-        fields={[{ key: "display_name", label: "Display Name", type: "text", required: true }]}
-        listFn={async () => ITEMS}
-        createFn={async () => ({})}
-        updateFn={async () => ({})}
-        deleteFn={deleteFn}
-      />
-    </QueryClientProvider>,
-  );
+function seededClient() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(["service-definitions"], ITEMS);
+  return client;
 }
 
-describe("OperationsCrudPage optimistic delete", () => {
-  it("restores the row when the delete request fails", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const deleteFn = vi.fn().mockRejectedValue(new Error("boom"));
+describe("optimisticDeleteHandlers", () => {
+  it("removes the row from cache before the request resolves", async () => {
+    const client = seededClient();
+    const handlers = optimisticDeleteHandlers(client, "service-definitions");
 
-    renderPage(client, deleteFn);
-    await screen.findByText("Home Cleaning");
+    await handlers.onMutate("1");
 
-    // Drive the mutation directly: the confirm dialog is exercised in Task 8.
-    const cache = client.getQueryData<typeof ITEMS>(["service-definitions"]);
-    expect(cache).toHaveLength(2);
-
-    await waitFor(() => expect(screen.getByText("Deep Cleaning")).toBeInTheDocument());
+    const cached = client.getQueryData<AdminResourceItem[]>(["service-definitions"]);
+    expect(cached).toHaveLength(1);
+    expect(cached?.[0].id).toBe("2");
   });
 
-  it("removes the row from cache immediately on delete", async () => {
+  it("returns the pre-delete list so a failure can roll back", async () => {
+    const client = seededClient();
+    const handlers = optimisticDeleteHandlers(client, "service-definitions");
+
+    const context = await handlers.onMutate("1");
+
+    expect(context.previous).toHaveLength(2);
+  });
+
+  it("restores the removed row when the request fails", async () => {
+    const client = seededClient();
+    const handlers = optimisticDeleteHandlers(client, "service-definitions");
+
+    const context = await handlers.onMutate("1");
+    handlers.onError(new Error("boom"), "1", context);
+
+    const cached = client.getQueryData<AdminResourceItem[]>(["service-definitions"]);
+    expect(cached).toHaveLength(2);
+    expect(cached?.map((item) => item.id)).toEqual(["1", "2"]);
+  });
+
+  it("leaves the cache untouched when the id matches nothing", async () => {
+    const client = seededClient();
+    const handlers = optimisticDeleteHandlers(client, "service-definitions");
+
+    await handlers.onMutate("does-not-exist");
+
+    expect(client.getQueryData<AdminResourceItem[]>(["service-definitions"])).toHaveLength(2);
+  });
+
+  it("tolerates an unseeded cache without throwing", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    let release: () => void = () => {};
-    const deleteFn = vi.fn(() => new Promise<unknown>((resolve) => { release = () => resolve({}); }));
+    const handlers = optimisticDeleteHandlers(client, "service-definitions");
 
-    renderPage(client, deleteFn);
-    await screen.findByText("Home Cleaning");
+    const context = await handlers.onMutate("1");
 
-    release();
+    expect(context.previous).toBeUndefined();
+    expect(client.getQueryData(["service-definitions"])).toEqual([]);
   });
 });
 ```
 
-- [ ] **Step 2: Run the test to verify the current behavior**
+- [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npx vitest run src/test/operations-crud-optimistic.test.tsx`
+Run: `npx vitest run src/test/optimistic-delete.test.ts`
 
-Record which assertions fail. The rollback assertion is the one that must fail before the
-implementation lands.
+Expected: FAIL — the module does not exist.
 
-- [ ] **Step 3: Implement the optimistic delete**
+- [ ] **Step 3: Implement the factory**
 
-In `OperationsCrudPage.tsx`, give the delete mutation optimistic handlers. `queryKey` is
-the prop already threaded through the component:
+Create `src/features/admin/screens/operations/optimistic-delete.ts`:
 
-```tsx
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteFn(id),
-    onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: [queryKey] });
-      const previous = queryClient.getQueryData<AdminResourceItem[]>([queryKey]);
-      queryClient.setQueryData<AdminResourceItem[]>([queryKey], (current) =>
+```ts
+import type { QueryClient } from "@tanstack/react-query";
+import type { AdminResourceItem } from "@/lib/api/types";
+
+/** A record's id, tolerating both the `id` and Mongo `_id` spellings the API returns. */
+export function itemId(item: AdminResourceItem): string {
+  const candidate = item.id || item._id;
+  return typeof candidate === "string" ? candidate : "";
+}
+
+export interface OptimisticDeleteContext {
+  previous?: AdminResourceItem[];
+}
+
+/**
+ * Cache transitions for an optimistic delete, as a factory rather than inline mutation
+ * handlers: inline handlers can only be reached by driving the confirmation dialog,
+ * which tests the dialog instead of the rollback.
+ */
+export function optimisticDeleteHandlers(client: QueryClient, queryKey: string) {
+  const key = [queryKey];
+
+  return {
+    async onMutate(id: string): Promise<OptimisticDeleteContext> {
+      // Stop an in-flight list refetch from overwriting the optimistic removal.
+      await client.cancelQueries({ queryKey: key });
+      const previous = client.getQueryData<AdminResourceItem[]>(key);
+      client.setQueryData<AdminResourceItem[]>(key, (current) =>
         (current ?? []).filter((item) => itemId(item) !== id),
       );
       return { previous };
     },
-    onError: (_error, _id, context) => {
-      // Put the row back: the server still has it.
-      if (context?.previous) queryClient.setQueryData([queryKey], context.previous);
-      toast.error("Failed to delete record.");
-    },
-    onSuccess: () => toast.success("Record deleted."),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: [queryKey] }),
-  });
-```
 
-Keep the existing mutation's other behavior (dialog dismissal) intact.
+    onError(_error: unknown, _id: string, context?: OptimisticDeleteContext): void {
+      // The server still has the record; put it back.
+      if (context?.previous) client.setQueryData(key, context.previous);
+    },
+
+    onSettled(): void {
+      void client.invalidateQueries({ queryKey: key });
+    },
+  };
+}
+```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npx vitest run src/test/operations-crud-optimistic.test.tsx`
+Run: `npx vitest run src/test/optimistic-delete.test.ts`
 
-Expected: PASS.
+Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Run the full suite**
+- [ ] **Step 5: Wire the factory into the CRUD page**
+
+In `OperationsCrudPage.tsx`, import the factory and remove the now-duplicated local
+`itemId` definition at line 62, importing it from the new module instead:
+
+```tsx
+import { itemId, optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
+```
+
+Then wire the handlers into the delete mutation, keeping the existing toasts and dialog
+dismissal. Build the handlers once so `onError` closes over the same instance:
+
+```tsx
+  const deleteCache = optimisticDeleteHandlers(queryClient, queryKey);
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteFn(id),
+    onMutate: deleteCache.onMutate,
+    onSettled: deleteCache.onSettled,
+    onError: (error, id, context) => {
+      deleteCache.onError(error, id, context);
+      toast.error("Failed to delete record.");
+    },
+    onSuccess: () => toast.success("Record deleted."),
+  });
+```
+
+The `onError` wrapper is deliberate: assigning the factory's `onError` directly would
+drop the toast, and assigning only the toast would silently drop the rollback.
+
+- [ ] **Step 6: Verify no duplicate `itemId` remains**
+
+Run: `grep -rn "function itemId" src/features/admin/screens/operations/`
+
+Expected: exactly one definition, in `optimistic-delete.ts`.
+
+- [ ] **Step 7: Run the full suite**
 
 Run: `npm test`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/features/admin/screens/operations/OperationsCrudPage.tsx src/test/operations-crud-optimistic.test.tsx
+git add src/features/admin/screens/operations/optimistic-delete.ts src/features/admin/screens/operations/OperationsCrudPage.tsx src/test/optimistic-delete.test.ts
 git commit -m "perf(admin-web): optimistic CRUD delete with rollback on failure"
 ```
 
