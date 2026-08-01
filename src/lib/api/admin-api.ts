@@ -424,7 +424,7 @@ export async function fetchSessionAnomalies(): Promise<SessionAnomalies> {
 
   const rawCounts = data.active_sessions_by_admin;
   const active_sessions_by_admin: Record<string, number> = {};
-  if (rawCounts && typeof rawCounts === "object") {
+  if (rawCounts && typeof rawCounts === "object" && !Array.isArray(rawCounts)) {
     for (const [adminId, count] of Object.entries(rawCounts)) {
       if (typeof count === "number" && Number.isFinite(count)) {
         active_sessions_by_admin[adminId] = count;

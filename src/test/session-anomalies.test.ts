@@ -64,4 +64,35 @@ describe("fetchSessionAnomalies", () => {
       recent_session_spike_detected: true,
     });
   });
+
+  it("normalizes active_sessions_by_admin when it is an array", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse(envelope({ active_sessions_by_admin: [1, 2, 3] })),
+    );
+
+    const result = await fetchSessionAnomalies();
+
+    expect(result.active_sessions_by_admin).toEqual({});
+  });
+
+  it("normalizes active_sessions_by_admin when it is a string", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse(envelope({ active_sessions_by_admin: "not an object" })),
+    );
+
+    const result = await fetchSessionAnomalies();
+
+    expect(result.active_sessions_by_admin).toEqual({});
+  });
+
+  it("defaults every field when response.data is null", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(envelope(null)));
+
+    const result = await fetchSessionAnomalies();
+
+    expect(result.active_sessions_by_admin).toEqual({});
+    expect(result.global_active_sessions).toBe(0);
+    expect(result.long_lived_session_count).toBe(0);
+    expect(result.recent_session_spike_detected).toBe(false);
+  });
 });
