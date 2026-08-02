@@ -25,22 +25,38 @@ const zeroSuppressedPreview: AudiencePreviewOut = {
 
 describe("canSend", () => {
   const audience: BroadcastAudience = { type: "ALL" };
+  const matchingSnapshot = { audience, type: undefined };
 
   it("no preview yet -> false", () => {
     expect(
-      canSend({ preview: null, audience, dirtySincePreview: false }),
+      canSend({
+        preview: null,
+        audience,
+        dirtySincePreview: false,
+        previewedSnapshot: null,
+      }),
     ).toBe(false);
   });
 
   it("preview present, audience unchanged since -> true", () => {
     expect(
-      canSend({ preview, audience, dirtySincePreview: false }),
+      canSend({
+        preview,
+        audience,
+        dirtySincePreview: false,
+        previewedSnapshot: matchingSnapshot,
+      }),
     ).toBe(true);
   });
 
   it("preview present but audience edited afterwards -> false (stale)", () => {
     expect(
-      canSend({ preview, audience, dirtySincePreview: true }),
+      canSend({
+        preview,
+        audience,
+        dirtySincePreview: true,
+        previewedSnapshot: matchingSnapshot,
+      }),
     ).toBe(false);
   });
 
@@ -51,6 +67,7 @@ describe("canSend", () => {
         preview: { ...preview, audience: invalidAudience },
         audience: invalidAudience,
         dirtySincePreview: false,
+        previewedSnapshot: { audience: invalidAudience, type: undefined },
       }),
     ).toBe(false);
   });
@@ -86,10 +103,22 @@ describe("canSend", () => {
     ).toBe(true);
   });
 
-  it("no snapshot provided -> relies on the latch alone (backwards compatible)", () => {
+  // `previewedSnapshot` is required in `CanSendArgs` precisely so this case
+  // cannot arise silently: a preview exists but the caller passed no
+  // snapshot for it (e.g. lost track of what `onPreviewed` handed back).
+  // TypeScript rejects the omission at compile time; at the value level,
+  // a null snapshot alongside a non-null preview is treated as stale
+  // rather than as "trust the latch" — there is no honest path back to the
+  // old degraded behavior.
+  it("preview present but snapshot is null -> false (never falls back to trusting the latch)", () => {
     expect(
-      canSend({ preview, audience, dirtySincePreview: false, previewedSnapshot: null }),
-    ).toBe(true);
+      canSend({
+        preview,
+        audience,
+        dirtySincePreview: false,
+        previewedSnapshot: null,
+      }),
+    ).toBe(false);
   });
 });
 

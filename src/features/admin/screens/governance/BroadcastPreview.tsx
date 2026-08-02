@@ -157,11 +157,17 @@ interface CanSendArgs {
    * even if the caller forgets to latch `dirtySincePreview` on some edit
    * path (e.g. a type selector wired up separately from the audience
    * builder), comparing the live audience/type against this snapshot still
-   * catches the mismatch. Optional so existing single-audience callers
-   * degrade to relying on the latch alone — degrading safety only if the
-   * caller opts out, never silently.
+   * catches the mismatch.
+   *
+   * Required, not optional: `preview` and its snapshot are produced
+   * together by the same `onPreviewed(preview, snapshot)` callback, so a
+   * caller has no legitimate way to hold one without the other. Making this
+   * optional would let a caller silently fall back to trusting the latch
+   * alone — exactly the failure mode this field exists to close — so
+   * omitting it is a compile error instead of a runtime downgrade. `null`
+   * is still a valid value, for the "no preview taken yet" state.
    */
-  previewedSnapshot?: PreviewSnapshot | null;
+  previewedSnapshot: PreviewSnapshot | null;
 }
 
 /**
@@ -196,7 +202,7 @@ export function canSend({
 }: CanSendArgs): boolean {
   if (!preview) return false;
   if (dirtySincePreview) return false;
-  if (previewedSnapshot && !snapshotsEqual(previewedSnapshot, { audience, type })) return false;
+  if (!previewedSnapshot || !snapshotsEqual(previewedSnapshot, { audience, type })) return false;
   if (validateAudience(audience)) return false;
   return true;
 }
