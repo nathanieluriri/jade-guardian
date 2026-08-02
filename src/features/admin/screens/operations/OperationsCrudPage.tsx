@@ -385,6 +385,17 @@ export function OperationsCrudPage({
 
                   if (field.type === "select") {
                     const selectValue = typeof value === "string" && value ? value : EMPTY_SELECT_VALUE;
+                    const knownOptions = field.options || [];
+                    // A `select` may be a UI-only *guided picker* over a free-text
+                    // backend field (see rule_type in PricingRulesPage): the stored
+                    // value can legitimately be outside `field.options`. Inject it as
+                    // an extra option so it stays visible and is never silently
+                    // dropped/rewritten by editing and saving an unrelated field.
+                    const hasCurrentOption = knownOptions.some((option) => option.value === selectValue);
+                    const options =
+                      selectValue !== EMPTY_SELECT_VALUE && !hasCurrentOption
+                        ? [...knownOptions, { value: selectValue, label: selectValue }]
+                        : knownOptions;
                     return (
                       <div key={field.key} className="space-y-1.5">
                         <Label htmlFor={field.key}>
@@ -405,13 +416,16 @@ export function OperationsCrudPage({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value={EMPTY_SELECT_VALUE}>None</SelectItem>
-                            {(field.options || []).map((option) => (
+                            {options.map((option) => (
                               <SelectItem key={option.value} value={option.value}>
                                 {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {field.helpText && (
+                          <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                        )}
                       </div>
                     );
                   }
