@@ -869,23 +869,32 @@ client once in the component body with `const queryClient = useQueryClient();`:
 ```
 
 Declare `prefetch` on the five Operations Core sub-items, importing the list functions
-from `@/lib/api/admin-api`. Their query keys must match the `queryKey` prop each page
-passes to `OperationsCrudPage` — verify each against the page file before writing it:
+from `@/lib/api/admin-api`.
+
+**The cache key is NOT the bare `queryKey` prop.** `OperationsCrudPage.tsx:154` builds it
+as `["operations", queryKey]`. A prefetch keyed on `["service-definitions"]` alone warms
+an entry the page never reads — the hover would appear to work and buy nothing. Use the
+two-element form:
 
 ```tsx
-prefetch: { queryKey: ["service-definitions"], queryFn: () => listServiceDefinitions({ skip: 0, limit: 100 }) },
-prefetch: { queryKey: ["add-ons"], queryFn: () => listAddOns({ skip: 0, limit: 100 }) },
-prefetch: { queryKey: ["pricing-rules"], queryFn: () => listPricingRules({ skip: 0, limit: 100 }) },
-prefetch: { queryKey: ["service-areas"], queryFn: () => listServiceAreas({ skip: 0, limit: 100 }) },
-prefetch: { queryKey: ["promo-codes"], queryFn: () => listPromoCodes({ skip: 0, limit: 100 }) },
+prefetch: { queryKey: ["operations", "service-definitions"], queryFn: () => listServiceDefinitions({ skip: 0, limit: 100 }) },
+prefetch: { queryKey: ["operations", "add-ons"], queryFn: () => listAddOns({ skip: 0, limit: 100 }) },
+prefetch: { queryKey: ["operations", "pricing-rules"], queryFn: () => listPricingRules({ skip: 0, limit: 100 }) },
+prefetch: { queryKey: ["operations", "service-areas"], queryFn: () => listServiceAreas({ skip: 0, limit: 100 }) },
+prefetch: { queryKey: ["operations", "promo-codes"], queryFn: () => listPromoCodes({ skip: 0, limit: 100 }) },
 ```
 
-- [ ] **Step 6: Verify the query keys match**
+- [ ] **Step 6: Verify the query keys match the real cache key**
+
+Run: `grep -n "queryKey" src/features/admin/screens/operations/OperationsCrudPage.tsx`
+
+Confirm the `useQuery` call still builds its key as `["operations", queryKey]`. Then run:
 
 Run: `grep -rn "queryKey=" src/features/admin/screens/operations/`
 
-Every key above must appear verbatim. A mismatch means the prefetch warms a cache entry
-the page never reads — silently useless. Fix any mismatch before continuing.
+The second element of each prefetch key must equal the `queryKey` prop of the matching
+page. A mismatch in either element means the prefetch warms a cache entry the page never
+reads — silently useless, and no test will catch it. Fix any mismatch before continuing.
 
 - [ ] **Step 7: Run the full suite**
 
@@ -1344,6 +1353,7 @@ lets the cache transitions be asserted directly.
 
 **Interfaces:**
 - Consumes: `QueryClient` from `@tanstack/react-query`; `AdminResourceItem` from `@/lib/api/types`; `itemId(item)` currently defined at `OperationsCrudPage.tsx:62`.
+- **Cache key shape:** `OperationsCrudPage.tsx:154` keys its list query as `["operations", queryKey]`, and invalidates the same. The factory takes the bare `queryKey` string and builds `["operations", queryKey]` internally, so call sites stay simple and cannot drift from the page.
 - Produces: `optimisticDeleteHandlers(client: QueryClient, queryKey: string)` returning `{ onMutate(id: string): Promise<{ previous?: AdminResourceItem[] }>, onError(error: unknown, id: string, context?: { previous?: AdminResourceItem[] }): void, onSettled(): void }`. Also exports `itemId(item: AdminResourceItem): string`, moved here so both modules share one definition.
 
 - [ ] **Step 1: Write the failing test**
@@ -1361,9 +1371,12 @@ const ITEMS: AdminResourceItem[] = [
   { id: "2", display_name: "Deep Cleaning" },
 ];
 
+/** Key shape mirrors OperationsCrudPage.tsx:154 — ["operations", queryKey]. */
+const KEY = ["operations", "service-definitions"];
+
 function seededClient() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(["service-definitions"], ITEMS);
+  client.setQueryData(KEY, ITEMS);
   return client;
 }
 
@@ -1374,7 +1387,7 @@ describe("optimisticDeleteHandlers", () => {
 
     await handlers.onMutate("1");
 
-    const cached = client.getQueryData<AdminResourceItem[]>(["service-definitions"]);
+    const cached = client.getQueryData<AdminResourceItem[]>(KEY);
     expect(cached).toHaveLength(1);
     expect(cached?.[0].id).toBe("2");
   });
@@ -1395,7 +1408,7 @@ describe("optimisticDeleteHandlers", () => {
     const context = await handlers.onMutate("1");
     handlers.onError(new Error("boom"), "1", context);
 
-    const cached = client.getQueryData<AdminResourceItem[]>(["service-definitions"]);
+    const cached = client.getQueryData<AdminResourceItem[]>(KEY);
     expect(cached).toHaveLength(2);
     expect(cached?.map((item) => item.id)).toEqual(["1", "2"]);
   });
@@ -1406,7 +1419,7 @@ describe("optimisticDeleteHandlers", () => {
 
     await handlers.onMutate("does-not-exist");
 
-    expect(client.getQueryData<AdminResourceItem[]>(["service-definitions"])).toHaveLength(2);
+    expect(client.getQueryData<AdminResourceItem[]>(KEY)).toHaveLength(2);
   });
 
   it("tolerates an unseeded cache without throwing", async () => {
@@ -1416,7 +1429,7 @@ describe("optimisticDeleteHandlers", () => {
     const context = await handlers.onMutate("1");
 
     expect(context.previous).toBeUndefined();
-    expect(client.getQueryData(["service-definitions"])).toEqual([]);
+    expect(client.getQueryData(KEY)).toEqual([]);
   });
 });
 ```
@@ -1451,7 +1464,8 @@ export interface OptimisticDeleteContext {
  * which tests the dialog instead of the rollback.
  */
 export function optimisticDeleteHandlers(client: QueryClient, queryKey: string) {
-  const key = [queryKey];
+  // Must match OperationsCrudPage's own useQuery/invalidateQueries key exactly.
+  const key = ["operations", queryKey];
 
   return {
     async onMutate(id: string): Promise<OptimisticDeleteContext> {
