@@ -1268,40 +1268,67 @@ git commit -m "test(admin-web): pin admin-api request paths against the OpenAPI 
 ### Task 11: End-to-end verification of the repaired pages
 
 The two pages this batch exists to fix were broken at runtime, not at type-check time.
-Unit tests alone would not have caught either. This task verifies them in a real browser.
+Unit tests alone would not have caught either: the Sessions crash came from a field the
+TypeScript interface promised and the runtime never delivered. This task verifies both in
+a real browser.
+
+**No backend is required.** The house pattern, established in `e2e/admin-login.spec.ts`,
+stubs every `/api/**` call with `page.route`. `playwright.config.ts` boots `npm run dev`
+itself via its `webServer` block. What the real dev server buys you is the *origin*: the
+client only ever fetches relative `/api/...` paths so the Next rewrite keeps session
+cookies first-party, and `page.route` intercepts in front of that rewrite.
 
 **Files:**
 - Create: `e2e/admin-repaired-pages.spec.ts`
-- Reference: `e2e/admin-login.spec.ts`, `playwright.config.ts`
+- Reference: `e2e/admin-login.spec.ts` (auth + stubbing pattern), `playwright.config.ts`
 
 **Interfaces:**
-- Consumes: the auth setup pattern already established in `e2e/admin-login.spec.ts`.
+- Consumes: the `page.route` stubbing and authenticated-session setup already used by `e2e/admin-login.spec.ts`.
 - Produces: no exports.
 
-- [ ] **Step 1: Read the existing e2e auth pattern**
+- [ ] **Step 1: Read the existing pattern in full**
 
-Run: `cat e2e/admin-login.spec.ts && cat playwright.config.ts`
+Run: `cat e2e/admin-login.spec.ts`
 
-Note how authentication is established and what `baseURL` is configured. Reuse that
-mechanism rather than inventing a second one.
+Note precisely: how it stubs `/api/**`, how it establishes an authenticated session
+(cookies plus the auth hint), and the shape of the profile fixture it uses. Reuse that
+machinery rather than inventing a second mechanism.
+
+Critically, note the permission model: `LIMITED_PROFILE` in that file has an empty
+`permissionList`, which makes route landing deterministic. **Your pages are permission-
+gated**, so an empty permission list may render a permission-denied screen instead of the
+page under test. Give your profile fixture the permissions these two routes require —
+read `src/lib/admin-access.ts` and the two page components to find the exact requirement
+strings.
 
 - [ ] **Step 2: Write the spec**
 
-Create `e2e/admin-repaired-pages.spec.ts`. Adapt the authentication preamble to match what
-Step 1 revealed:
+Create `e2e/admin-repaired-pages.spec.ts`. Adapt the auth preamble to whatever Step 1
+revealed; the assertions below are the fixed part.
 
 ```ts
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 /**
- * Both pages below shipped broken: /admin/security/sessions white-screened on an
- * undefined field, and /admin/permissions/templates dead-ended on a bare error
- * string. Both failed only at runtime, so they need a real browser to verify.
+ * Both pages below shipped broken. `/admin/security/sessions` white-screened on an
+ * undefined field; `/admin/permissions/templates` dead-ended on a bare error string
+ * with no retry and blanked the role that HAD loaded. Both failed only at runtime,
+ * so they need a real browser to verify.
  */
 
 test("the sessions page renders without a client-side exception", async ({ page }) => {
   const pageErrors: Error[] = [];
   page.on("pageerror", (error) => pageErrors.push(error));
+
+  // The exact shape that used to crash it: the endpoint's `data` is a passthrough
+  // object in the spec, so `active_sessions_by_admin` can simply be absent.
+  await page.route("**/api/v1/admins/monitoring/sessions/anomalies", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, message: "ok", data: {}, requestId: "req_e2e" }),
+    }),
+  );
 
   await page.goto("/admin/security/sessions");
 
@@ -1310,23 +1337,56 @@ test("the sessions page renders without a client-side exception", async ({ page 
   expect(pageErrors).toEqual([]);
 });
 
-test("the role templates page keeps the role selector reachable", async ({ page }) => {
+test("one failing role template does not blank the healthy one", async ({ page }) => {
+  await page.route("**/api/v1/admins/permission-templates/cleaner*", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ success: false, message: "boom", data: null, requestId: "req_e2e" }),
+    }),
+  );
+  await page.route("**/api/v1/admins/permission-templates/customer*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "ok",
+        data: { source: "template", permissionList: { permissions: [] } },
+        requestId: "req_e2e",
+      }),
+    }),
+  );
+
   await page.goto("/admin/permissions/templates");
 
-  await expect(page.getByRole("heading", { name: /role permission templates/i })).toBeVisible();
-  await expect(page.getByTestId("role-template-role-selector")).toBeVisible();
+  // The failing role shows its own error and retry; the healthy role still renders.
+  await expect(page.getByTestId("role-template-error-cleaner")).toBeVisible();
+  await expect(page.getByTestId("role-template-retry-cleaner")).toBeVisible();
+  await expect(page.getByTestId("role-template-section-customer")).toBeVisible();
 });
 ```
+
+Stub every other `/api/**` route the shell needs (profile, catalog, alerts) exactly as
+`admin-login.spec.ts` does — an unstubbed call will hang against a nonexistent backend
+and time out.
 
 - [ ] **Step 3: Run the e2e suite**
 
 Run: `npx playwright test e2e/admin-repaired-pages.spec.ts`
 
-Expected: PASS. If the run cannot authenticate against a live backend, note that
-explicitly in the task handoff rather than deleting the assertions — a skipped test that
-reports as passing is worse than no test.
+Playwright's Chromium is a separate `npx playwright install` step. If the browser is not
+present, set `PLAYWRIGHT_CHANNEL=chrome` to use an installed Chrome, per the config's own
+comment.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: If it cannot run, report — do not weaken**
+
+If the browser cannot be installed or the dev server cannot start in this environment,
+say so plainly in the report and leave the assertions intact. A skipped test that reports
+as passing is worse than no test. Do NOT delete assertions, do NOT add `test.skip`, and do
+NOT loosen a selector to make a run go green.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add e2e/admin-repaired-pages.spec.ts
