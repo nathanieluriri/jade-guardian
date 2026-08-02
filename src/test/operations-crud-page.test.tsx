@@ -49,21 +49,41 @@ describe("OperationsCrudPage submit feedback", () => {
     release();
   });
 
-  it("disables the delete confirm action while delete is in flight", async () => {
+  it("optimistically removes the row as soon as delete is confirmed", async () => {
     const user = userEvent.setup();
     let release: () => void = () => {};
     const deleteFn = vi.fn(() => new Promise<unknown>((resolve) => { release = () => resolve({}); }));
 
     renderPage(async () => ({}), deleteFn);
 
+    await screen.findByText("Existing");
     await user.click(await screen.findByRole("button", { name: /^delete$/i }));
     const confirm = await screen.findByRole("button", { name: /confirm delete/i });
     await user.click(confirm);
 
-    await waitFor(() => expect(confirm).toBeDisabled());
-    expect(confirm).toHaveTextContent(/deleting/i);
+    // The row (and its dialog) is removed from the DOM immediately, before the
+    // delete request resolves — this is the optimistic update taking effect.
+    await waitFor(() => expect(screen.queryByText("Existing")).not.toBeInTheDocument());
     expect(deleteFn).toHaveBeenCalledTimes(1);
 
     release();
+    await waitFor(() => expect(screen.getByText(/no records found/i)).toBeInTheDocument());
+  });
+
+  it("restores the row if the delete request fails", async () => {
+    const user = userEvent.setup();
+    const deleteFn = vi.fn(() => Promise.reject(new Error("boom")));
+
+    renderPage(async () => ({}), deleteFn);
+
+    await screen.findByText("Existing");
+    await user.click(await screen.findByRole("button", { name: /^delete$/i }));
+    const confirm = await screen.findByRole("button", { name: /confirm delete/i });
+    await user.click(confirm);
+
+    // The request rejects fast enough that removal and rollback can both land
+    // before we get to assert, so only the final, settled state is checked here.
+    await waitFor(() => expect(screen.getByText("Existing")).toBeInTheDocument());
+    expect(deleteFn).toHaveBeenCalledTimes(1);
   });
 });

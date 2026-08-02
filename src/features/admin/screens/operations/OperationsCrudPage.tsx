@@ -34,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction, type PermissionRequirement } from "@/lib/admin-access";
 import type { AdminResourceItem, AdminResourcePayload } from "@/lib/api/types";
+import { itemId, optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
 
 export type CrudFieldType = "text" | "number" | "textarea" | "boolean" | "array_csv";
 
@@ -59,11 +60,6 @@ type OperationsCrudPageProps = {
   updateFn: (id: string, payload: AdminResourcePayload) => Promise<unknown>;
   deleteFn: (id: string) => Promise<unknown>;
 };
-
-function itemId(item: AdminResourceItem) {
-  const candidate = item.id || item._id;
-  return typeof candidate === "string" ? candidate : "";
-}
 
 function initialValues(fields: CrudField[]) {
   return fields.reduce<Record<string, string | boolean>>((acc, field) => {
@@ -184,13 +180,19 @@ export function OperationsCrudPage({
     onError: () => toast.error("Update failed."),
   });
 
+  const deleteCache = optimisticDeleteHandlers(queryClient, queryKey);
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteFn(id),
-    onSuccess: async () => {
+    onMutate: deleteCache.onMutate,
+    onSettled: deleteCache.onSettled,
+    onSuccess: () => {
       toast.success("Deleted successfully.");
-      await queryClient.invalidateQueries({ queryKey: ["operations", queryKey] });
     },
-    onError: () => toast.error("Delete failed."),
+    onError: (error, id, context) => {
+      deleteCache.onError(error, id, context);
+      toast.error("Delete failed.");
+    },
   });
 
   const isEditing = !!editingItemId;
