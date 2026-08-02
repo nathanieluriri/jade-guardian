@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapFormToPayload,
   mapItemToFormValues,
+  resolveFieldValue,
   type CrudField,
 } from "@/features/admin/screens/operations/OperationsCrudPage";
 import {
@@ -44,6 +45,26 @@ describe("CrudField.legacyKey fallback", () => {
     const item = { id: "1", is_active: true } as unknown as AdminResourceItem;
     const formValues = mapItemToFormValues(item, noFallback);
     expect(formValues.isAvailable).toBe(false);
+  });
+});
+
+// Finding 1 (CodeRabbit): the record preview list used `row[column.key]`
+// directly, bypassing the legacyKey fallback that mapItemToFormValues
+// applies. An unmigrated record (only `is_active`, no `isAvailable`) rendered
+// as "-" in the list while the edit form showed the real value.
+describe("resolveFieldValue (shared by preview list and mapItemToFormValues)", () => {
+  const FIELDS: CrudField[] = [
+    { key: "isAvailable", label: "Available", type: "boolean", legacyKey: "is_active" },
+  ];
+
+  it("falls back to the legacy key's real value instead of rendering as unset", () => {
+    const item = { id: "1", is_active: true } as unknown as AdminResourceItem;
+    expect(resolveFieldValue(item, FIELDS[0])).toBe(true);
+  });
+
+  it("does not fall back when the canonical key is explicitly false", () => {
+    const item = { id: "1", isAvailable: false, is_active: true } as unknown as AdminResourceItem;
+    expect(resolveFieldValue(item, FIELDS[0])).toBe(false);
   });
 });
 

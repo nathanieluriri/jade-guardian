@@ -130,9 +130,23 @@ function initialValues(fields: CrudField[]) {
   }, {});
 }
 
+/**
+ * Resolves a field's raw value off an item, falling back to `field.legacyKey`
+ * ONLY when the canonical key is strictly `undefined`. A legacy record whose
+ * canonical field is explicitly `false` (e.g. `isAvailable: false`) must keep
+ * that value rather than falling back to a stale legacy value.
+ */
+export function resolveFieldValue(item: AdminResourceItem, field: CrudField) {
+  const canonical = item[field.key];
+  if (canonical !== undefined || !field.legacyKey) {
+    return canonical;
+  }
+  return item[field.legacyKey];
+}
+
 export function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
   return fields.reduce<FormValues>((acc, field) => {
-    const value = item[field.key] !== undefined || !field.legacyKey ? item[field.key] : item[field.legacyKey];
+    const value = resolveFieldValue(item, field);
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
       return acc;
@@ -627,7 +641,7 @@ export function OperationsCrudPage({
                 <div key={id || JSON.stringify(row)} className="p-4 flex flex-col gap-3">
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {previewColumns.map((column) => {
-                      const value = row[column.key];
+                      const value = resolveFieldValue(row, column);
                       return (
                         <div key={`${id}-${column.key}`} className="min-w-0">
                           <p className="text-xs text-muted-foreground">{column.label}</p>

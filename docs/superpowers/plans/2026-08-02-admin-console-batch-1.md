@@ -1710,7 +1710,9 @@ git commit -m "perf(admin-web): route-level loading boundaries for every admin s
 - [ ] `npm run lint` passes.
 - [ ] `npm run build` succeeds.
 - [ ] `/admin/security/sessions` renders in a browser with no console errors.
-- [ ] `/admin/permissions/templates` renders with a reachable role selector.
+- [ ] `/admin/permissions/templates` renders both role templates ("cleaner" and
+      "customer") side by side, each with its own independent loading/error/retry
+      state -- there is deliberately no role selector (see L328).
 - [ ] Scrollbars are slim in both light and dark mode.
 - [ ] The sidebar Overview icon is optically centered.
 - [ ] Navigating away from and back to an Operations page does not flash a loading state.

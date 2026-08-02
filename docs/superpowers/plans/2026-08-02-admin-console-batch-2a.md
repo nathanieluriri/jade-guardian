@@ -413,7 +413,12 @@ export const AddOnCreate = z
     price: z.number().nonnegative(),
     currency: z.string().min(1).optional(),
     isAvailable: z.boolean().optional(),
-    serviceId: z.string().min(1).optional(),
+    // NOTE: shipped as `z.string().min(1).nullable().optional()`, not string-or-omitted.
+    // The frontend must be able to send `serviceId: null` to un-scope an add-on back to
+    // "all services" -- a PATCH that simply omits the field (`delete payload.serviceId`)
+    // never clears an existing value server-side, it just leaves it untouched. Allowing
+    // `null` is what makes that clear-the-scope case possible.
+    serviceId: z.string().min(1).nullable().optional(),
     description: z.string().optional(),
     checklist: z.array(z.string()).optional(),
     /** Internal key, no consumer reads it. */

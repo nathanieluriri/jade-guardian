@@ -59,7 +59,12 @@ describe("RoleTemplatesPage", () => {
     fireEvent.click(screen.getByTestId("role-template-retry-cleaner"));
 
     await waitFor(() => expect(screen.getByTestId("role-template-section-cleaner")).toBeInTheDocument());
-    expect(fetchRoleTemplate.mock.calls.length).toBeGreaterThan(callsBefore);
+    // Assert exactly one additional call, and that it retried the failed "cleaner"
+    // role specifically -- not the already-healthy "customer" template, which
+    // `toBeGreaterThan` alone would not have distinguished.
+    const callsAfter = fetchRoleTemplate.mock.calls.slice(callsBefore);
+    expect(callsAfter).toHaveLength(1);
+    expect(callsAfter[0][0]).toBe("cleaner");
     expect(screen.queryByTestId("role-template-error-cleaner")).not.toBeInTheDocument();
   });
 

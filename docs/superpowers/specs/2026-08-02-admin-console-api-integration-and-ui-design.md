@@ -67,7 +67,7 @@ only. Each tightened endpoint must be recorded in
 
 Add a tenth CRUD collection, `admin_feature_templates`, with documents shaped:
 
-```
+```json
 { feature: string, name: string, description?: string, payload: object }
 ```
 
@@ -110,8 +110,10 @@ against the spec), not a rewrite of the integration layer.
 
 - `SessionsPage` — guard `active_sessions_by_admin` before `Object.entries`; the field
   being absent from the response currently throws during render.
-- `RoleTemplatesPage` — replace the bare error string with a retry affordance and a role
-  selector, so a failure for one role is recoverable.
+- `RoleTemplatesPage` — replace the bare error string with a retry affordance, so a
+  failure for one role is recoverable. Implemented as two independent sections (one
+  per role) rendered side by side, each with its own loading/error/retry state --
+  deliberately no role selector, since both role templates are shown at once.
 
 ### F. Frontend: responsiveness
 
@@ -134,9 +136,9 @@ against the spec), not a rewrite of the integration layer.
 ## Batching
 
 **Batch 1 — frontend only, no backend dependency.** API integration audit, sessions crash guard, role-templates
-error/retry and role selector, global slim scrollbar, sidebar icon alignment, route-level
-`loading.tsx`, skeletons, optimistic mutations, hover prefetch and query-cache tuning,
-pending/no-double-submit button states.
+error/retry (two independent role sections, no role selector), global slim scrollbar,
+sidebar icon alignment, route-level `loading.tsx`, skeletons, optimistic mutations,
+hover prefetch and query-cache tuning, pending/no-double-submit button states.
 
 **Batch 2 — backend and frontend.** Per-feature Zod schemas, the `admin_feature_templates`
 collection and picker, the richer `CrudField` types, and the Operations Core deep pass.

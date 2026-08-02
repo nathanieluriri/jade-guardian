@@ -58,12 +58,29 @@ describe("admin-api path parity with the OpenAPI spec (path existence only, not 
   // starting point) finds just 47 of the 63 occurrences and misses every resource
   // CRUD path entirely, since those pass their literal path to the helper, not
   // directly to `apiRequest`. Matching the helpers' call sites too closes that gap.
+  //
+  // The generic-type portion is matched with `<(?:[^<>]|<[^<>]*>)*>`, which allows
+  // one level of nesting (e.g. `apiRequest<Partial<SessionAnomalies> | null>(...)`
+  // or `apiRequest<RoleTemplate | Record<string, unknown>>(...)`) rather than
+  // stopping at the first `>`, which previously truncated the match and made the
+  // whole call site invisible to this audit. `\s*` between the generic and the
+  // opening `(...)"` already matches newlines, so a call where the path literal
+  // sits on a line after `apiRequest<...>(` (e.g. `fetchSessionAnomalies`) is
+  // still found.
   const pathRegex =
-    /(?:apiRequest(?:<[^>]*>)?|listAdminResource|createAdminResource|updateAdminResource|deleteAdminResource)\(\s*[`"](\/v1\/[^`"]+)[`"]/g;
+    /(?:apiRequest(?:<(?:[^<>]|<[^<>]*>)*>)?|listAdminResource|createAdminResource|updateAdminResource|deleteAdminResource)\(\s*[`"](\/v1\/[^`"]+)[`"]/g;
   const clientPaths = Array.from(new Set(Array.from(source.matchAll(pathRegex), (match) => match[1])));
 
+  // Before the nested-generic fix (Finding 2), this regex found 79 unique paths and
+  // silently dropped 3 call sites whose generic argument itself contained a `>`
+  // (`apiRequest<Record<string, never>>`, `apiRequest<Partial<SessionAnomalies> |
+  // null>`, `apiRequest<RoleTemplate | Record<string, unknown>>`) plus the
+  // multi-line `fetchSessionAnomalies` call. The fixed regex finds 82. This floor
+  // is set just below that true count so a future regression that silently drops
+  // call sites (e.g. a new nesting depth the balanced-bracket pattern can't
+  // handle) fails the test instead of passing unnoticed.
   it("finds the client's request paths", () => {
-    expect(clientPaths.length).toBeGreaterThan(20);
+    expect(clientPaths.length).toBeGreaterThan(81);
   });
 
   const checkedPaths = clientPaths.filter((clientPath) => !EXPECTED_MISSING.includes(clientPath));
