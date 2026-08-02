@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { TableSkeleton } from "@/components/feedback/table-skeleton";
 import {
   Dialog,
   DialogContent,
@@ -337,7 +338,7 @@ export function OperationsCrudPage({
           <Badge variant="secondary">{rows.length}</Badge>
         </div>
         <div className="divide-y divide-border">
-          {listQuery.isLoading && <p className="p-4 text-sm text-muted-foreground">Loading records...</p>}
+          {listQuery.isLoading && <TableSkeleton rows={5} columns={3} />}
           {listQuery.isError && <p className="p-4 text-sm text-destructive">Failed to load records.</p>}
           {!listQuery.isLoading && !listQuery.isError && rows.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">No records found.</p>
