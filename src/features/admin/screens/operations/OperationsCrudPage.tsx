@@ -159,7 +159,13 @@ export function mapFormToPayload(values: FormValues, fields: CrudField[]) {
       return acc;
     }
     if (field.type === "money") {
-      acc[field.key] = str === "" ? null : Number(str);
+      if (str === "") {
+        acc[field.key] = null;
+        return acc;
+      }
+      const parsed = Number(str);
+      if (!Number.isFinite(parsed)) return acc;
+      acc[field.key] = Math.round(parsed * 100) / 100;
       return acc;
     }
     if (field.type === "date") {
@@ -178,12 +184,16 @@ export function mapFormToPayload(values: FormValues, fields: CrudField[]) {
   }, {});
 }
 
-function validateRequired(values: FormValues, fields: CrudField[]) {
+export function validateRequired(values: FormValues, fields: CrudField[]) {
   return fields.every((field) => {
     if (!field.required) return true;
     const value = values[field.key];
     if (field.type === "boolean") return value === true || value === false;
     if (field.type === "multiselect") return Array.isArray(value) && value.length > 0;
+    if (field.type === "money") {
+      const str = String(value || "").trim();
+      return str.length > 0 && Number.isFinite(Number(str));
+    }
     return String(value || "").trim().length > 0;
   });
 }

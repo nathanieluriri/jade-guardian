@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapFormToPayload,
   mapItemToFormValues,
+  validateRequired,
   type CrudField,
 } from "@/features/admin/screens/operations/OperationsCrudPage";
 import type { AdminResourceItem } from "@/lib/api/types";
@@ -36,6 +37,24 @@ describe("OperationsCrudPage field type mapping", () => {
     const fields: CrudField[] = [{ key: "status", label: "Status", type: "select", options: [] }];
     const payload = mapFormToPayload({ status: "" }, fields);
     expect("status" in payload).toBe(false);
+  });
+
+  it("omits money field from payload when value is non-numeric", () => {
+    const fields: CrudField[] = [{ key: "price", label: "Price", type: "money" }];
+    const payload = mapFormToPayload({ price: "abc" }, fields);
+    expect("price" in payload).toBe(false);
+  });
+
+  it("rounds money field to 2 decimal places", () => {
+    const fields: CrudField[] = [{ key: "price", label: "Price", type: "money" }];
+    expect(mapFormToPayload({ price: "25.567" }, fields).price).toBe(25.57);
+    expect(mapFormToPayload({ price: "25.5" }, fields).price).toBe(25.5);
+  });
+
+  it("fails validation for a required money field with a non-numeric value", () => {
+    const fields: CrudField[] = [{ key: "price", label: "Price", type: "money", required: true }];
+    expect(validateRequired({ price: "abc" }, fields)).toBe(false);
+    expect(validateRequired({ price: "25.5" }, fields)).toBe(true);
   });
 
   it("maps radio field to the chosen option's value", () => {
