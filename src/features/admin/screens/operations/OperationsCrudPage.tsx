@@ -31,12 +31,30 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction, type PermissionRequirement } from "@/lib/admin-access";
 import type { AdminResourceItem, AdminResourcePayload } from "@/lib/api/types";
 import { itemId, optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
 
-export type CrudFieldType = "text" | "number" | "textarea" | "boolean" | "array_csv";
+export type CrudFieldType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "boolean"
+  | "array_csv"
+  | "select"
+  | "radio"
+  | "multiselect"
+  | "date"
+  | "money";
 
 export type CrudField = {
   key: string;
@@ -44,7 +62,22 @@ export type CrudField = {
   type: CrudFieldType;
   required?: boolean;
   placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  helpText?: string;
 };
+
+const EMPTY_SELECT_VALUE = "__none__";
+
+type FormValue = string | boolean | string[];
+type FormValues = Record<string, FormValue>;
+
+function dateStringToEpochSeconds(dateStr: string): number {
+  return Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000);
+}
+
+function epochSecondsToDateString(epochSeconds: number): string {
+  return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
+}
 
 type OperationsCrudPageProps = {
   title: string;
@@ -62,14 +95,20 @@ type OperationsCrudPageProps = {
 };
 
 function initialValues(fields: CrudField[]) {
-  return fields.reduce<Record<string, string | boolean>>((acc, field) => {
-    acc[field.key] = field.type === "boolean" ? false : "";
+  return fields.reduce<FormValues>((acc, field) => {
+    if (field.type === "boolean") {
+      acc[field.key] = false;
+    } else if (field.type === "multiselect") {
+      acc[field.key] = [];
+    } else {
+      acc[field.key] = "";
+    }
     return acc;
   }, {});
 }
 
-function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
-  return fields.reduce<Record<string, string | boolean>>((acc, field) => {
+export function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
+  return fields.reduce<FormValues>((acc, field) => {
     const value = item[field.key];
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
@@ -77,6 +116,18 @@ function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
     }
     if (field.type === "array_csv") {
       acc[field.key] = Array.isArray(value) ? value.join(", ") : "";
+      return acc;
+    }
+    if (field.type === "multiselect") {
+      acc[field.key] = Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+      return acc;
+    }
+    if (field.type === "date") {
+      acc[field.key] = typeof value === "number" ? epochSecondsToDateString(value) : "";
+      return acc;
+    }
+    if (field.type === "money") {
+      acc[field.key] = typeof value === "number" ? String(value) : "";
       return acc;
     }
     if (typeof value === "number") {
@@ -88,17 +139,31 @@ function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
   }, {});
 }
 
-function mapFormToPayload(values: Record<string, string | boolean>, fields: CrudField[]) {
+export function mapFormToPayload(values: FormValues, fields: CrudField[]) {
   return fields.reduce<AdminResourcePayload>((acc, field) => {
     const value = values[field.key];
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
       return acc;
     }
+    if (field.type === "multiselect") {
+      const arr = Array.isArray(value) ? value : [];
+      if (arr.length === 0 && !field.required) return acc;
+      acc[field.key] = arr;
+      return acc;
+    }
     const str = String(value || "").trim();
     if (!str && !field.required) return acc;
     if (field.type === "number") {
       acc[field.key] = str === "" ? null : Number(str);
+      return acc;
+    }
+    if (field.type === "money") {
+      acc[field.key] = str === "" ? null : Number(str);
+      return acc;
+    }
+    if (field.type === "date") {
+      acc[field.key] = str === "" ? null : dateStringToEpochSeconds(str);
       return acc;
     }
     if (field.type === "array_csv") {
@@ -113,11 +178,12 @@ function mapFormToPayload(values: Record<string, string | boolean>, fields: Crud
   }, {});
 }
 
-function validateRequired(values: Record<string, string | boolean>, fields: CrudField[]) {
+function validateRequired(values: FormValues, fields: CrudField[]) {
   return fields.every((field) => {
     if (!field.required) return true;
     const value = values[field.key];
     if (field.type === "boolean") return value === true || value === false;
+    if (field.type === "multiselect") return Array.isArray(value) && value.length > 0;
     return String(value || "").trim().length > 0;
   });
 }
@@ -141,7 +207,7 @@ export function OperationsCrudPage({
   const [open, setOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialValues(fields));
+  const [formValues, setFormValues] = useState<FormValues>(() => initialValues(fields));
 
   const canRead = canAccessAdminAction(readRequirement, profileQuery.data);
   const canCreate = canAccessAdminAction(createRequirement, profileQuery.data);
@@ -296,6 +362,149 @@ export function OperationsCrudPage({
                     );
                   }
 
+                  if (field.type === "select") {
+                    const selectValue = typeof value === "string" && value ? value : EMPTY_SELECT_VALUE;
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Select
+                          value={selectValue}
+                          onValueChange={(next) =>
+                            setFormValues((prev) => ({
+                              ...prev,
+                              [field.key]: next === EMPTY_SELECT_VALUE ? "" : next,
+                            }))
+                          }
+                        >
+                          <SelectTrigger id={field.key}>
+                            <SelectValue placeholder={field.placeholder} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={EMPTY_SELECT_VALUE}>None</SelectItem>
+                            {(field.options || []).map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "radio") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <RadioGroup
+                          value={typeof value === "string" ? value : ""}
+                          onValueChange={(next) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: next }))
+                          }
+                          className="flex flex-wrap gap-4"
+                        >
+                          {(field.options || []).map((option) => (
+                            <div key={option.value} className="flex items-center gap-2">
+                              <RadioGroupItem id={`${field.key}-${option.value}`} value={option.value} />
+                              <Label htmlFor={`${field.key}-${option.value}`} className="font-normal">
+                                {option.label}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "multiselect") {
+                    const selected = Array.isArray(value) ? value : [];
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <div className="flex flex-wrap gap-3 rounded-md border p-3">
+                          {(field.options || []).map((option) => {
+                            const checked = selected.includes(option.value);
+                            return (
+                              <label
+                                key={option.value}
+                                className="flex items-center gap-2 text-sm font-normal"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) =>
+                                    setFormValues((prev) => {
+                                      const prevSelected = Array.isArray(prev[field.key])
+                                        ? (prev[field.key] as string[])
+                                        : [];
+                                      const nextSelected = event.target.checked
+                                        ? [...prevSelected, option.value]
+                                        : prevSelected.filter((entry) => entry !== option.value);
+                                      return { ...prev, [field.key]: nextSelected };
+                                    })
+                                  }
+                                />
+                                {option.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "date") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Input
+                          id={field.key}
+                          type="date"
+                          value={String(value || "")}
+                          onChange={(event) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                          }
+                        />
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "money") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Input
+                          id={field.key}
+                          type="number"
+                          step="0.01"
+                          placeholder={field.placeholder}
+                          value={String(value || "")}
+                          onChange={(event) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                          }
+                        />
+                        {field.helpText && (
+                          <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={field.key} className="space-y-1.5">
                       <Label htmlFor={field.key}>
@@ -311,6 +520,9 @@ export function OperationsCrudPage({
                           setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
                         }
                       />
+                      {field.helpText && (
+                        <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                      )}
                     </div>
                   );
                 })}
