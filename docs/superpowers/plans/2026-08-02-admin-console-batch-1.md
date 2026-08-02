@@ -321,38 +321,56 @@ git commit -m "fix(admin-web): add empty state and retry to the session risk pan
 
 ---
 
-### Task 3: Make Role Templates recoverable
+### Task 3: Make each role template independently recoverable
 
-`/admin/permissions/templates` renders `Failed to load role templates.` with no retry and
-no way to select a different role, so one failing role dead-ends the page.
+`/admin/permissions/templates` renders `Failed to load role templates.` with no retry.
+
+The page does **not** have a role selector, and must not gain one: it runs two independent
+queries — `cleanerQuery` and `customerQuery`, both via `fetchRoleTemplate(role)` — and
+renders both `TemplateSection`s side by side at all times.
+
+The real defect is at `RoleTemplatesPage.tsx:544-565`:
+
+```tsx
+const loading = cleanerQuery.isLoading || customerQuery.isLoading;
+const hasError = cleanerQuery.isError || customerQuery.isError;
+...
+{hasError && <p className="font-mono-data text-destructive">Failed to load role templates.</p>}
+{!loading && !hasError && ( ... both TemplateSections ... )}
+```
+
+Both sections are gated behind a single combined `hasError`, so **one** failing role blanks
+the role that loaded successfully. Each role must own its own loading, error, and retry
+state.
 
 **Files:**
-- Modify: `src/features/admin/screens/RoleTemplatesPage.tsx`
+- Modify: `src/features/admin/screens/RoleTemplatesPage.tsx` (the combined `loading`/`hasError` gate around lines 544-600, and the `TemplateSection` component at line 236)
 - Test: `src/test/role-templates-page.test.tsx` (create)
 
 **Interfaces:**
-- Consumes: `fetchRoleTemplate(role)` and `fetchPermissionCatalog()` from `src/lib/api/admin-api.ts`.
-- Produces: no new exports.
+- Consumes: `fetchRoleTemplate(role)`, `fetchPermissionCatalog()` from `src/lib/api/admin-api.ts`.
+- Produces: no new module exports. `TemplateSection` gains three props: `isLoading: boolean`, `isError: boolean`, `onRetry: () => void`.
 
-- [ ] **Step 1: Read the current error branch**
+- [ ] **Step 1: Read the current structure**
 
-Run: `grep -n "Failed to load role templates" -B 12 -A 4 src/features/admin/screens/RoleTemplatesPage.tsx`
+Run: `sed -n '230,250p;420,440p;540,610p' src/features/admin/screens/RoleTemplatesPage.tsx`
 
-Note the exact surrounding JSX and the name of the query variable holding the role
-template request, and the state variable holding the currently selected role. The steps
-below refer to them as `templateQuery` and `selectedRole`; use the real names.
+Note `TemplateSection`'s existing prop list and how both sections are rendered, so the new
+props slot in without disturbing the rest.
 
 - [ ] **Step 2: Write the failing test**
 
-Create `src/test/role-templates-page.test.tsx`:
+Create `src/test/role-templates-page.test.tsx`. Follow the house style already used by
+`src/test/sessions-page.test.tsx`:
 
 ```tsx
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RoleTemplatesPage from "@/features/admin/screens/RoleTemplatesPage";
 
 vi.mock("@/hooks/use-admin-auth", () => ({ useAdminProfile: () => ({ data: undefined }) }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const fetchRoleTemplate = vi.fn();
 vi.mock("@/lib/api/admin-api", () => ({
@@ -363,6 +381,8 @@ vi.mock("@/lib/api/admin-api", () => ({
   rolloutRoleTemplate: vi.fn(),
   updateRoleTemplate: vi.fn(),
 }));
+
+const OK_TEMPLATE = { source: "template", permissionList: { permissions: [] } };
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -378,17 +398,44 @@ describe("RoleTemplatesPage", () => {
     fetchRoleTemplate.mockReset();
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("keeps the role selector reachable when the template request fails", async () => {
-    fetchRoleTemplate.mockRejectedValue(new Error("boom"));
+  it("still renders the customer template when the cleaner template fails", async () => {
+    fetchRoleTemplate.mockImplementation((role: string) =>
+      role === "cleaner" ? Promise.reject(new Error("boom")) : Promise.resolve(OK_TEMPLATE),
+    );
 
     renderPage();
 
-    expect(await screen.findByRole("button", { name: /retry/i })).toBeInTheDocument();
-    expect(screen.getByTestId("role-template-role-selector")).toBeInTheDocument();
+    // The failing role shows its own error; the healthy role still renders.
+    expect(await screen.findByTestId("role-template-error-cleaner")).toBeInTheDocument();
+    expect(await screen.findByTestId("role-template-section-customer")).toBeInTheDocument();
+    expect(screen.queryByTestId("role-template-error-customer")).not.toBeInTheDocument();
+  });
+
+  it("retries only the failed role and recovers it", async () => {
+    fetchRoleTemplate.mockImplementation((role: string) =>
+      role === "cleaner" ? Promise.reject(new Error("boom")) : Promise.resolve(OK_TEMPLATE),
+    );
+
+    renderPage();
+    await screen.findByTestId("role-template-error-cleaner");
+
+    const callsBefore = fetchRoleTemplate.mock.calls.length;
+    fetchRoleTemplate.mockImplementation(() => Promise.resolve(OK_TEMPLATE));
+
+    fireEvent.click(screen.getByTestId("role-template-retry-cleaner"));
+
+    await waitFor(() => expect(screen.getByTestId("role-template-section-cleaner")).toBeInTheDocument());
+    expect(fetchRoleTemplate.mock.calls.length).toBeGreaterThan(callsBefore);
+    expect(screen.queryByTestId("role-template-error-cleaner")).not.toBeInTheDocument();
+  });
+
+  it("renders both sections when neither request fails", async () => {
+    fetchRoleTemplate.mockResolvedValue(OK_TEMPLATE);
+
+    renderPage();
+
+    expect(await screen.findByTestId("role-template-section-cleaner")).toBeInTheDocument();
+    expect(await screen.findByTestId("role-template-section-customer")).toBeInTheDocument();
   });
 });
 ```
@@ -397,51 +444,89 @@ describe("RoleTemplatesPage", () => {
 
 Run: `npx vitest run src/test/role-templates-page.test.tsx`
 
-Expected: FAIL — no Retry button and no `role-template-role-selector` test id.
+Expected: FAIL — none of those test ids exist, and the first test fails because the
+customer section is currently hidden whenever the cleaner query errors.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 4: Give `TemplateSection` its own states**
 
-Two changes in `src/features/admin/screens/RoleTemplatesPage.tsx`:
-
-First, add `data-testid="role-template-role-selector"` to the wrapper element around the
-existing role-selection control.
-
-Second, hoist that selector above the error branch so it renders in both states, and give
-the error branch a retry:
+Add three props to `TemplateSection` (declared at line 236) — `isLoading`, `isError`,
+`onRetry` — and have it render its own state before its normal body:
 
 ```tsx
-  if (templateQuery.isError) {
+  if (isLoading) {
+    return <div data-testid={`role-template-loading-${role}`} className="surface-card p-4 text-sm text-muted-foreground">Loading {role} template...</div>;
+  }
+
+  if (isError) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tighter">Role Permission Templates</h1>
-        <div data-testid="role-template-role-selector">{roleSelector}</div>
-        <div className="space-y-3">
-          <p className="font-mono-data text-destructive">
-            Failed to load the template for “{selectedRole}”. Pick another role or retry.
-          </p>
-          <Button variant="outline" size="sm" onClick={() => templateQuery.refetch()} disabled={templateQuery.isFetching}>
-            {templateQuery.isFetching ? "Retrying..." : "Retry"}
-          </Button>
-        </div>
+      <div data-testid={`role-template-error-${role}`} className="surface-card space-y-3 p-4">
+        <p className="font-mono-data text-destructive">
+          Failed to load the {role} template.
+        </p>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
       </div>
     );
   }
 ```
 
-Extract the existing role-selection JSX into a `const roleSelector = (...)` above the
-early returns so both the error branch and the success branch render the same control.
+Use the section's existing `role` prop for the test ids and copy. If `TemplateSection` has
+no `role` prop, add one — the call sites already know which role they are.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [ ] **Step 5: Remove the combined gate**
+
+Replace the combined `loading` / `hasError` gate so both sections always render and each
+receives its own query state. Delete the `{hasError && <p>...}` banner and the
+`{!loading && !hasError && (...)}` wrapper:
+
+```tsx
+        <TemplateSection
+          role="cleaner"
+          data-testid="role-template-section-cleaner"
+          isLoading={cleanerQuery.isLoading}
+          isError={cleanerQuery.isError}
+          onRetry={() => cleanerQuery.refetch()}
+          /* ...keep every existing prop unchanged... */
+        />
+        <TemplateSection
+          role="customer"
+          data-testid="role-template-section-customer"
+          isLoading={customerQuery.isLoading}
+          isError={customerQuery.isError}
+          onRetry={() => customerQuery.refetch()}
+          /* ...keep every existing prop unchanged... */
+        />
+```
+
+`data-testid` must land on `TemplateSection`'s own rendered root element in its success
+state — pass it through explicitly rather than relying on prop spreading, unless the
+component already spreads unknown props onto its root.
+
+Delete the now-unused `loading` and `hasError` locals. If `loading` or `hasError` is
+referenced anywhere else in the file, keep only the references that still make sense and
+say so in your report.
+
+- [ ] **Step 6: Run the test to verify it passes**
 
 Run: `npx vitest run src/test/role-templates-page.test.tsx`
 
+Expected: PASS, 3 tests.
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `npm test`
+
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src/features/admin/screens/RoleTemplatesPage.tsx src/test/role-templates-page.test.tsx
-git commit -m "fix(admin-web): keep role selector and add retry when a role template fails to load"
+git commit -m "fix(admin-web): give each role template its own error and retry state
+
+One failing role previously blanked the role that loaded successfully,
+because both sections were gated behind a single combined hasError."
 ```
 
 ---
