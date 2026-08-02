@@ -616,6 +616,7 @@ export function AdminSidebar() {
                           href={item.url}
                           className={cn(
                             "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors duration-200 outline-none",
+                            "[&>svg]:size-[22px]",
                             "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white",
                             isActive && "bg-sidebar-accent/50 text-white",
                             pendingNavigationHref === item.url && "opacity-80 pointer-events-none"
