@@ -990,7 +990,20 @@ export async function fetchNotificationTypes() {
   return response.data;
 }
 
-export async function previewBroadcastAudience(audience: BroadcastAudience) {
+export async function previewBroadcastAudience(audience: BroadcastAudience, type?: string) {
+  // Two literal call sites (rather than a single variable path) so the
+  // path-parity audit in api-path-parity.test.ts, which only matches inline
+  // string/template literals passed to `apiRequest`, keeps seeing this route.
+  if (type !== undefined) {
+    const response = await apiRequest<AudiencePreviewOut>(
+      `/v1/admins/notifications/broadcasts/preview?type=${encodeURIComponent(type)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(audience),
+      }
+    );
+    return response.data;
+  }
   const response = await apiRequest<AudiencePreviewOut>("/v1/admins/notifications/broadcasts/preview", {
     method: "POST",
     body: JSON.stringify(audience),

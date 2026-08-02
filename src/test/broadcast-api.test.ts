@@ -134,6 +134,57 @@ describe("notification broadcast API client", () => {
       expect(JSON.parse(init.body as string)).toEqual(audience);
       expect(result).toEqual(preview);
     });
+
+    it("sends type as a query param when provided", async () => {
+      const fetchMock = getFetchMock();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          envelope({
+            audience: { type: "ALL" },
+            total: 1,
+            customers: 1,
+            cleaners: 0,
+            reachableByPush: 1,
+            matchedBeforeOptOut: 1,
+            suppressedByOptOut: 0,
+          })
+        )
+      );
+
+      const audience: BroadcastAudience = { type: "ALL" };
+      await previewBroadcastAudience(audience, "system.alert");
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        "/api/v1/admins/notifications/broadcasts/preview?type=system.alert"
+      );
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual(audience);
+    });
+
+    it("sends no type param when omitted, letting the server default", async () => {
+      const fetchMock = getFetchMock();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          envelope({
+            audience: { type: "ALL" },
+            total: 1,
+            customers: 1,
+            cleaners: 0,
+            reachableByPush: 1,
+            matchedBeforeOptOut: 1,
+            suppressedByOptOut: 0,
+          })
+        )
+      );
+
+      const audience: BroadcastAudience = { type: "ALL" };
+      await previewBroadcastAudience(audience);
+
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admins/notifications/broadcasts/preview");
+      expect(fetchMock.mock.calls[0][0]).not.toMatch(/type=/);
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual(audience);
+    });
   });
 
   describe("createBroadcast_v2", () => {
