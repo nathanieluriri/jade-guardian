@@ -28,10 +28,13 @@ describe("OperationsCrudPage loading state", () => {
       </QueryClientProvider>,
     );
 
-    // Query for the TableSkeleton by looking for the specific structure:
-    // a div with aria-hidden="true" that contains a border-b header and a divide-y rows container.
-    const skeleton = container.querySelector('div[aria-hidden="true"] > div.border-b');
+    // Verify TableSkeleton rendered by checking for its root element
+    const skeleton = container.querySelector('[data-testid="table-skeleton"]');
     expect(skeleton).toBeTruthy();
+
+    // Verify the expected number of skeleton rows rendered
+    const rows = container.querySelectorAll('[data-testid="table-skeleton-row"]');
+    expect(rows).toHaveLength(5);
 
     // Verify the old loading text is not present
     expect(screen.queryByText(/loading records/i)).not.toBeInTheDocument();

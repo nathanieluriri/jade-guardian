@@ -19,6 +19,7 @@ export function TableSkeleton({ rows = 6, columns = 5, className }: TableSkeleto
   return (
     <div
       aria-hidden="true"
+      data-testid="table-skeleton"
       className={cn("overflow-hidden rounded-xl border border-border/60 bg-card", className)}
     >
       <div className="flex items-center gap-4 border-b border-border/60 bg-muted/40 px-4 py-3">
@@ -32,7 +33,7 @@ export function TableSkeleton({ rows = 6, columns = 5, className }: TableSkeleto
 
       <div className="divide-y divide-border/60">
         {Array.from({ length: rows }).map((_, row) => (
-          <div key={row} className="flex items-center gap-4 px-4 py-4">
+          <div key={row} data-testid="table-skeleton-row" className="flex items-center gap-4 px-4 py-4">
             {Array.from({ length: columns }).map((_, column) => (
               <Skeleton
                 key={column}
