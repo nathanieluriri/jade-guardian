@@ -5,11 +5,54 @@ import { previewBroadcastAudience } from "@/lib/api/admin-api";
 import type { AudiencePreviewOut, BroadcastAudience } from "@/lib/api/broadcast-types";
 import { validateAudience } from "@/features/admin/screens/governance/AudienceBuilder";
 
+/** What a preview was taken against — the pair that determines its numbers. */
+export interface PreviewSnapshot {
+  audience: BroadcastAudience;
+  type: string | undefined;
+}
+
+/**
+ * Structural equality for `{ audience, type }` snapshots. Written by hand
+ * instead of pulling in a dependency: the shape is small and fully known
+ * (`BroadcastAudience`'s fields are all primitives or a string array), so a
+ * direct field-by-field comparison is both correct and easy to audit.
+ *
+ * Careful with the two footguns deep-equality usually trips on:
+ * - key order: we compare specific named fields, never object identity or
+ *   `JSON.stringify`, so `{a,b}` and `{b,a}` compare equal.
+ * - optional fields: `undefined` and "absent" are treated the same via `??`
+ *   defaults / `undefined` comparisons below, so `{ role: undefined }` and
+ *   `{}` compare equal, and switching audience type (which drops unrelated
+ *   optional fields per AudienceBuilder) is compared on the fields that
+ *   actually matter for each type rather than tripping on leftover keys.
+ */
+function snapshotsEqual(a: PreviewSnapshot, b: PreviewSnapshot): boolean {
+  if (a.type !== b.type) return false;
+  if (a.audience.type !== b.audience.type) return false;
+  if (a.audience.role !== b.audience.role) return false;
+  if (a.audience.inactiveDays !== b.audience.inactiveDays) return false;
+  if (a.audience.onboardingStatus !== b.audience.onboardingStatus) return false;
+
+  const aIds = a.audience.userIds ?? [];
+  const bIds = b.audience.userIds ?? [];
+  if (aIds.length !== bIds.length) return false;
+  for (let i = 0; i < aIds.length; i++) {
+    if (aIds[i] !== bIds[i]) return false;
+  }
+
+  return true;
+}
+
 interface BroadcastPreviewProps {
   audience: BroadcastAudience;
   /** Notification type the broadcast will actually send as, if selected yet. */
   type?: string;
-  onPreviewed: (preview: AudiencePreviewOut) => void;
+  /**
+   * Called with the preview result and the exact `{ audience, type }` it was
+   * taken against, so the caller (and `canSend`) can detect staleness even
+   * if it forgets to latch `dirtySincePreview` on every relevant change.
+   */
+  onPreviewed: (preview: AudiencePreviewOut, snapshot: PreviewSnapshot) => void;
 }
 
 /**
@@ -25,18 +68,24 @@ interface BroadcastPreviewProps {
  */
 export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPreviewProps) {
   const [preview, setPreview] = useState<AudiencePreviewOut | null>(null);
+  const [previewedSnapshot, setPreviewedSnapshot] = useState<PreviewSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const validationError = validateAudience(audience);
+  const isStale =
+    preview !== null &&
+    (previewedSnapshot === null || !snapshotsEqual(previewedSnapshot, { audience, type }));
 
   async function handlePreview() {
     setLoading(true);
     setError(null);
     try {
       const result = await previewBroadcastAudience(audience, type);
+      const snapshot: PreviewSnapshot = { audience, type };
       setPreview(result);
-      onPreviewed(result);
+      setPreviewedSnapshot(snapshot);
+      onPreviewed(result, snapshot);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to preview audience");
     } finally {
@@ -59,6 +108,12 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
 
       {preview && (
         <div className="rounded-md border p-4 text-sm space-y-1">
+          {isStale && (
+            <p role="status" className="font-medium text-destructive">
+              Audience or type changed since this preview — these numbers are stale.
+              Preview again before sending.
+            </p>
+          )}
           <p>
             <span className="font-medium">Matched:</span> {preview.total.toLocaleString()}{" "}
             <span className="text-muted-foreground">
@@ -85,15 +140,28 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
 interface CanSendArgs {
   preview: AudiencePreviewOut | null;
   audience: BroadcastAudience;
+  /** Notification type the broadcast will actually send as, if selected yet. */
+  type?: string;
   /**
-   * True whenever the audience has been edited since `preview` was taken.
-   * Determined by the caller (Task 5) as a deep-equality check between the
-   * previewed audience and the current one — see BroadcastPreview.tsx for
-   * rationale. Kept as an explicit flag here, not recomputed internally, so
-   * `canSend` stays a trivial pure function with a single obvious contract:
-   * given the three facts, decide.
+   * True whenever the caller believes the audience (or type) has been
+   * edited since `preview` was taken. This is the primary signal — set by
+   * the caller (Task 5) as an explicit latch: cleared right after a
+   * successful preview, set on any subsequent edit to audience or type.
+   * A latch rather than a recomputed diff, so it can't be fooled by an
+   * audience round-tripping back to an equal-looking value.
    */
   dirtySincePreview: boolean;
+  /**
+   * The exact `{ audience, type }` pair `preview` was taken against, as
+   * returned by `BroadcastPreview`'s `onPreviewed`. This is the backstop:
+   * even if the caller forgets to latch `dirtySincePreview` on some edit
+   * path (e.g. a type selector wired up separately from the audience
+   * builder), comparing the live audience/type against this snapshot still
+   * catches the mismatch. Optional so existing single-audience callers
+   * degrade to relying on the latch alone — degrading safety only if the
+   * caller opts out, never silently.
+   */
+  previewedSnapshot?: PreviewSnapshot | null;
 }
 
 /**
@@ -103,17 +171,32 @@ interface CanSendArgs {
  *
  * A send is authorized only when:
  * - a preview exists,
- * - the audience has not been edited since that preview was taken, and
+ * - the caller's own dirty-tracking says the audience/type haven't changed
+ *   since that preview, AND the preview's recorded snapshot still matches
+ *   the current audience/type (defense-in-depth: this can only make the
+ *   gate stricter, never looser, so a caller that gets the latch right
+ *   gains nothing extra to worry about, and a caller that forgets it is
+ *   still caught), and
  * - the audience is currently valid.
  *
- * The middle condition is the one that matters most: a preview taken for
- * audience A must never authorize a send to audience B. Whoever calls this
- * decides how `dirtySincePreview` is computed (see the field doc above);
- * `canSend` only enforces the resulting rule.
+ * The snapshot check exists because `dirtySincePreview` alone is only as
+ * good as the caller's discipline: if the notification type is tracked in
+ * a separate piece of state with its own handler, it is easy to latch
+ * dirty on audience edits and forget to do so on a type change, leaving
+ * `canSend` authorizing a send under opt-out numbers computed for the
+ * wrong type. The snapshot comparison does not depend on the caller
+ * remembering anything.
  */
-export function canSend({ preview, audience, dirtySincePreview }: CanSendArgs): boolean {
+export function canSend({
+  preview,
+  audience,
+  type,
+  dirtySincePreview,
+  previewedSnapshot,
+}: CanSendArgs): boolean {
   if (!preview) return false;
   if (dirtySincePreview) return false;
+  if (previewedSnapshot && !snapshotsEqual(previewedSnapshot, { audience, type })) return false;
   if (validateAudience(audience)) return false;
   return true;
 }
