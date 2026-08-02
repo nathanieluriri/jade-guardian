@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,13 @@ export function BroadcastComposer() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<string | null>(null);
+  // `useState` is asynchronous: two rapid clicks can both read `sending`
+  // as `false` before the first click's `setSending(true)` commits, so
+  // `sending` alone leaves a window for `createBroadcast_v2` to fire
+  // twice — duplicate delivery to every user on the platform. A ref is
+  // mutated synchronously, so the *second* click of a double-click sees
+  // the first click's guard immediately, before any re-render happens.
+  const sendInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +117,14 @@ export function BroadcastComposer() {
     canSend({ preview, audience, type, dirtySincePreview, previewedSnapshot });
 
   async function handleSend() {
+    // Re-assert authorisation and in-flight status here rather than
+    // trusting the button's `disabled` prop — that prop only reflects the
+    // last committed render, which is exactly the window a rapid
+    // double-click lands in. `sendInFlightRef` is checked and set
+    // synchronously so the second click of a double-click bails
+    // immediately, before `createBroadcast_v2` is called a second time.
+    if (sendInFlightRef.current || !sendAuthorized) return;
+    sendInFlightRef.current = true;
     setSending(true);
     setSendError(null);
     try {
@@ -120,6 +135,7 @@ export function BroadcastComposer() {
       // must not cost the admin their drafted message.
       setSendError(err instanceof Error ? err.message : "Failed to send broadcast");
     } finally {
+      sendInFlightRef.current = false;
       setSending(false);
     }
   }

@@ -152,6 +152,49 @@ describe("BroadcastComposer", () => {
     expect(await screen.findByText(/sent|queued|success/i)).toBeInTheDocument();
   });
 
+  it("fires createBroadcast_v2 exactly once on a rapid double-click", async () => {
+    setup();
+    const createSpy = vi
+      .spyOn(adminApi, "createBroadcast_v2")
+      .mockResolvedValue({
+        id: "b1",
+        title: "Big sale",
+        body: "Everything is 50% off this weekend.",
+        type: "promo.broadcast",
+        audience: { type: "ALL" },
+        status: "QUEUED",
+        promoId: null,
+        promoCode: null,
+        data: null,
+        recipientCount: 0,
+        processedCount: 0,
+        sentCount: 0,
+        failedCount: 0,
+        createdBy: null,
+        dispatchedAt: null,
+        completedAt: null,
+        dateCreated: null,
+        lastUpdated: null,
+      });
+
+    const user = userEvent.setup();
+    render(<BroadcastComposer />);
+    await waitFor(() => expect(adminApi.fetchNotificationTypes).toHaveBeenCalled());
+    await fillMessage(user);
+    await doPreview(user);
+
+    const sendButton = screen.getByRole("button", { name: /^send/i });
+    // Fire two clicks without awaiting between them — simulates the async
+    // setState window a rapid double-click lands in.
+    fireEvent.click(sendButton);
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    // Give any second in-flight call a chance to land before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("does not clear the composed message on a failed send", async () => {
     setup();
     vi.spyOn(adminApi, "createBroadcast_v2").mockRejectedValue(new Error("network down"));
