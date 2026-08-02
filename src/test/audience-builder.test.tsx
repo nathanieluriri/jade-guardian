@@ -27,6 +27,21 @@ describe("validateAudience", () => {
     ).toBeNull();
   });
 
+  it("USER_IDS with exactly 10,000 ids is valid", () => {
+    const userIds = Array.from({ length: 10_000 }, (_, i) => `u${i}`);
+    expect(
+      validateAudience({ type: "USER_IDS", userIds, role: "customer" }),
+    ).toBeNull();
+  });
+
+  it("USER_IDS with 10,001 ids is invalid and names the limit", () => {
+    const userIds = Array.from({ length: 10_001 }, (_, i) => `u${i}`);
+    const error = validateAudience({ type: "USER_IDS", userIds, role: "customer" });
+    expect(error).not.toBeNull();
+    expect(error).toMatch(/10,000/);
+    expect(error).toMatch(/10,001/);
+  });
+
   it("CUSTOMERS_INACTIVE without inactiveDays is invalid", () => {
     expect(validateAudience({ type: "CUSTOMERS_INACTIVE" })).not.toBeNull();
   });
@@ -40,6 +55,12 @@ describe("validateAudience", () => {
   it("CUSTOMERS_INACTIVE with inactiveDays 3651 is invalid", () => {
     expect(
       validateAudience({ type: "CUSTOMERS_INACTIVE", inactiveDays: 3651 }),
+    ).not.toBeNull();
+  });
+
+  it("CUSTOMERS_INACTIVE with fractional inactiveDays is invalid", () => {
+    expect(
+      validateAudience({ type: "CUSTOMERS_INACTIVE", inactiveDays: 1.5 }),
     ).not.toBeNull();
   });
 

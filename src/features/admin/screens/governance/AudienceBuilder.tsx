@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -45,8 +46,14 @@ const ONBOARDING_STATUS_LABELS: Record<(typeof ONBOARDING_STATUSES)[number], str
 export function validateAudience(audience: BroadcastAudience): string | null {
   const required = AUDIENCE_REQUIREMENTS[audience.type];
 
-  if (required.includes("userIds") && !audience.userIds?.length) {
-    return "userIds is required for USER_IDS";
+  if (required.includes("userIds")) {
+    const count = audience.userIds?.length ?? 0;
+    if (count === 0) {
+      return "userIds is required for USER_IDS";
+    }
+    if (count > 10_000) {
+      return `userIds must not exceed 10,000 (got ${count.toLocaleString()})`;
+    }
   }
   if (required.includes("role") && !audience.role) {
     return "role is required for USER_IDS";
@@ -127,6 +134,14 @@ export function AudienceBuilder({ value, onChange }: AudienceBuilderProps) {
             }}
             placeholder="One user ID per line, or comma-separated"
           />
+          <p
+            className={cn(
+              "text-xs",
+              (value.userIds?.length ?? 0) > 10_000 ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {(value.userIds?.length ?? 0).toLocaleString()} / 10,000 ids
+          </p>
         </div>
       )}
 
