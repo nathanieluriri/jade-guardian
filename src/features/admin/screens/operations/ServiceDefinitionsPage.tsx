@@ -32,6 +32,14 @@ export const SERVICE_DEFINITION_FIELDS: CrudField[] = [
   { key: "currency", label: "Currency", type: "text", placeholder: "USD" },
   { key: "isAvailable", label: "Available", type: "boolean" },
   {
+    key: "checklist",
+    label: "Checklist",
+    type: "array_csv",
+    placeholder: "Dust surfaces, Vacuum carpets, Mop floors",
+    helpText:
+      "Comma-separated tasks the cleaner sees in-app for this service. Leave empty to fall back to the generic task list.",
+  },
+  {
     key: "service_key",
     label: "Service Key",
     type: "text",
@@ -39,6 +47,12 @@ export const SERVICE_DEFINITION_FIELDS: CrudField[] = [
     helpText: "Internal handle used for operations tooling. Not shown to customers.",
   },
 ];
+
+function requireAPrice(values: Record<string, unknown>): string | null {
+  const hasBasePrice = String(values.basePrice ?? "").trim().length > 0;
+  const hasHourlyRate = String(values.hourlyRate ?? "").trim().length > 0;
+  return hasBasePrice || hasHourlyRate ? null : "Set either a base price or an hourly rate.";
+}
 
 export default function ServiceDefinitionsPage() {
   return (
@@ -51,6 +65,7 @@ export default function ServiceDefinitionsPage() {
       updateRequirement={{ method: "PATCH", path: "/v1/admins/service-definitions/{id}" }}
       deleteRequirement={{ method: "DELETE", path: "/v1/admins/service-definitions/{id}" }}
       fields={SERVICE_DEFINITION_FIELDS}
+      validateForm={requireAPrice}
       listFn={() => listServiceDefinitions(OPERATIONS_LIST_PAGE)}
       createFn={createServiceDefinition}
       updateFn={updateServiceDefinition}

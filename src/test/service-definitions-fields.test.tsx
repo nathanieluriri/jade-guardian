@@ -12,6 +12,7 @@ const CANONICAL_KEYS = [
   "priceUnit",
   "currency",
   "isAvailable",
+  "checklist",
   "service_key",
 ];
 
@@ -42,5 +43,11 @@ describe("ServiceDefinitionsPage field vocabulary", () => {
     const hourlyRate = SERVICE_DEFINITION_FIELDS.find((f) => f.key === "hourlyRate");
     expect(basePrice?.type).toBe("money");
     expect(hourlyRate?.type).toBe("money");
+  });
+
+  it("checklist is an array_csv field with help text", () => {
+    const field = SERVICE_DEFINITION_FIELDS.find((f) => f.key === "checklist");
+    expect(field?.type).toBe("array_csv");
+    expect(field?.helpText).toBeTruthy();
   });
 });

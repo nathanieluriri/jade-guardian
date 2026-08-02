@@ -92,6 +92,11 @@ type OperationsCrudPageProps = {
   createFn: (payload: AdminResourcePayload) => Promise<unknown>;
   updateFn: (id: string, payload: AdminResourcePayload) => Promise<unknown>;
   deleteFn: (id: string) => Promise<unknown>;
+  /**
+   * Optional cross-field validation beyond per-field `required` checks.
+   * Return a user-facing error string to block submit, or null when valid.
+   */
+  validateForm?: (values: Record<string, unknown>) => string | null;
 };
 
 function initialValues(fields: CrudField[]) {
@@ -211,6 +216,7 @@ export function OperationsCrudPage({
   createFn,
   updateFn,
   deleteFn,
+  validateForm,
 }: OperationsCrudPageProps) {
   const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
@@ -272,7 +278,12 @@ export function OperationsCrudPage({
   });
 
   const isEditing = !!editingItemId;
-  const canSubmit = validateRequired(formValues, fields) && !createMutation.isPending && !updateMutation.isPending;
+  const formError = validateForm ? validateForm(formValues) : null;
+  const canSubmit =
+    validateRequired(formValues, fields) &&
+    !formError &&
+    !createMutation.isPending &&
+    !updateMutation.isPending;
 
   const startCreate = () => {
     setEditingItemId(null);
@@ -537,19 +548,26 @@ export function OperationsCrudPage({
                   );
                 })}
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button
-                  data-testid="crud-submit"
-                  onClick={submit}
-                  disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}
-                >
-                  {createMutation.isPending || updateMutation.isPending
-                    ? "Saving..."
-                    : isEditing
-                      ? "Save Changes"
-                      : "Create"}
-                </Button>
+              <DialogFooter className="sm:flex-col sm:items-stretch sm:gap-2">
+                {formError && (
+                  <p className="text-sm text-destructive" data-testid="crud-form-error">
+                    {formError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button
+                    data-testid="crud-submit"
+                    onClick={submit}
+                    disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}
+                  >
+                    {createMutation.isPending || updateMutation.isPending
+                      ? "Saving..."
+                      : isEditing
+                        ? "Save Changes"
+                        : "Create"}
+                  </Button>
+                </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
