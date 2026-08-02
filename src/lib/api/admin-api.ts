@@ -46,6 +46,13 @@ import type {
   TotpSetupData,
   UsersSummaryReport,
 } from "@/lib/api/types";
+import type {
+  BroadcastAudience,
+  BroadcastCreateRequest,
+  BroadcastListOut,
+  BroadcastOut,
+  AudiencePreviewOut,
+} from "@/lib/api/broadcast-types";
 
 function normalizePermissionEntry(input: unknown): RoleTemplate["permissionList"]["permissions"][number] | null {
   if (!input || typeof input !== "object") return null;
@@ -966,6 +973,66 @@ export async function updateBroadcast(id: string, payload: AdminResourcePayload)
 
 export async function deleteBroadcast(id: string) {
   return deleteAdminResource(`/v1/admins/broadcasts/${id}`);
+}
+
+/**
+ * Client for the real notification broadcast API (`/v1/admins/notifications/broadcasts`),
+ * which actually fans out pushes/notifications — unlike the legacy `/v1/admins/broadcasts`
+ * CRUD collection above, which just writes a row.
+ *
+ * `listNotificationBroadcasts` is cursor-paginated (`cursor`/`pageSize` in,
+ * `{ items, nextCursor, pageSize }` out), unlike every other admin list in this file.
+ * Do NOT route it through `listAdminResource` (which hardcodes `limit`/`skip`) and do NOT
+ * flatten its response to a bare array — callers need `nextCursor` to page.
+ */
+export async function fetchNotificationTypes() {
+  const response = await apiRequest<string[]>("/v1/admins/notifications/types");
+  return response.data;
+}
+
+export async function previewBroadcastAudience(audience: BroadcastAudience) {
+  const response = await apiRequest<AudiencePreviewOut>("/v1/admins/notifications/broadcasts/preview", {
+    method: "POST",
+    body: JSON.stringify(audience),
+  });
+  return response.data;
+}
+
+export async function createBroadcast_v2(payload: BroadcastCreateRequest) {
+  const response = await apiRequest<BroadcastOut>("/v1/admins/notifications/broadcasts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function listNotificationBroadcasts(params: { cursor?: string; pageSize?: number } = {}) {
+  const query = new URLSearchParams();
+  if (params.cursor !== undefined) query.set("cursor", params.cursor);
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const qs = query.toString();
+  const path = qs ? `/v1/admins/notifications/broadcasts?${qs}` : `/v1/admins/notifications/broadcasts`;
+  const response = await apiRequest<BroadcastListOut>(path);
+  return response.data;
+}
+
+export async function fetchNotificationBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}`);
+  return response.data;
+}
+
+export async function resumeBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}/resume`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+export async function cancelBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}/cancel`, {
+    method: "POST",
+  });
+  return response.data;
 }
 
 export async function listCleanerTags(params: { limit?: number; skip?: number } = {}) {

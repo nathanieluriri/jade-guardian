@@ -75,12 +75,17 @@ describe("admin-api path parity with the OpenAPI spec (path existence only, not 
   // silently dropped 3 call sites whose generic argument itself contained a `>`
   // (`apiRequest<Record<string, never>>`, `apiRequest<Partial<SessionAnomalies> |
   // null>`, `apiRequest<RoleTemplate | Record<string, unknown>>`) plus the
-  // multi-line `fetchSessionAnomalies` call. The fixed regex finds 82. This floor
-  // is set just below that true count so a future regression that silently drops
-  // call sites (e.g. a new nesting depth the balanced-bracket pattern can't
-  // handle) fails the test instead of passing unnoticed.
+  // multi-line `fetchSessionAnomalies` call. The fixed regex found 82. Task 2 of the
+  // 2026-08-02 admin-console-batch-3a added the notification broadcast API client
+  // (`fetchNotificationTypes`, `previewBroadcastAudience`, `createBroadcast_v2`,
+  // `listNotificationBroadcasts`, `fetchNotificationBroadcast`, `resumeBroadcast`,
+  // `cancelBroadcast`), which contributes 6 new distinct literal paths — the true
+  // count is now 88. This floor is set just below that true count so a future
+  // regression that silently drops call sites (e.g. a new nesting depth the
+  // balanced-bracket pattern can't handle) fails the test instead of passing
+  // unnoticed.
   it("finds the client's request paths", () => {
-    expect(clientPaths.length).toBeGreaterThan(81);
+    expect(clientPaths.length).toBeGreaterThan(87);
   });
 
   const checkedPaths = clientPaths.filter((clientPath) => !EXPECTED_MISSING.includes(clientPath));
