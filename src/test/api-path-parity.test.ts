@@ -79,17 +79,18 @@ describe("admin-api path parity with the OpenAPI spec (path existence only, not 
   // 2026-08-02 admin-console-batch-3a added the notification broadcast API client
   // (`fetchNotificationTypes`, `previewBroadcastAudience`, `createBroadcast_v2`,
   // `listNotificationBroadcasts`, `fetchNotificationBroadcast`, `resumeBroadcast`,
-  // `cancelBroadcast`), which contributes 6 new distinct literal paths (88 total).
-  // The round-1 review fix for `previewBroadcastAudience` (passing the `type` query
-  // param the backend route requires) added a second literal call site — one for
-  // the with-`type` case, one for the without — so the audit keeps matching it
-  // whether or not `type` is passed. That's one more distinct literal, bringing the
-  // true count to 89. This floor is set just below that true count so a future
-  // regression that silently drops call sites (e.g. a new nesting depth the
-  // balanced-bracket pattern can't handle) fails the test instead of passing
-  // unnoticed.
+  // `cancelBroadcast`), which contributes 6 new distinct literal paths — the true
+  // count is now 88. (An earlier round-1 review fix for `previewBroadcastAudience`
+  // briefly used two near-identical `apiRequest` call sites to keep the audit
+  // seeing the route with/without a `type` query param, which inflated this to 89;
+  // round-2 replaced that with a single call site using the same unconditional
+  // `?${query.toString()}` convention as listAdmins/listCleaners/etc. elsewhere in
+  // this file, bringing the true count back to 88.) This floor is set just below
+  // that true count so a future regression that silently drops call sites (e.g. a
+  // new nesting depth the balanced-bracket pattern can't handle) fails the test
+  // instead of passing unnoticed.
   it("finds the client's request paths", () => {
-    expect(clientPaths.length).toBeGreaterThan(88);
+    expect(clientPaths.length).toBeGreaterThan(87);
   });
 
   const checkedPaths = clientPaths.filter((clientPath) => !EXPECTED_MISSING.includes(clientPath));

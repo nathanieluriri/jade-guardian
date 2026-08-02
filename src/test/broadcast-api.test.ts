@@ -128,7 +128,9 @@ describe("notification broadcast API client", () => {
       const audience: BroadcastAudience = { type: "ALL" };
       const result = await previewBroadcastAudience(audience);
 
-      expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admins/notifications/broadcasts/preview");
+      // Matches the codebase's existing `?${query.toString()}` convention: an empty
+      // query still appends a bare `?`, a no-op querystring server-side.
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admins/notifications/broadcasts/preview?");
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       expect(init.method).toBe("POST");
       expect(JSON.parse(init.body as string)).toEqual(audience);
@@ -180,7 +182,10 @@ describe("notification broadcast API client", () => {
       const audience: BroadcastAudience = { type: "ALL" };
       await previewBroadcastAudience(audience);
 
-      expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admins/notifications/broadcasts/preview");
+      // Matches the codebase's existing `?${query.toString()}` convention (see
+      // listAdmins/listCleaners/etc. in admin-api.ts): an empty query still appends a
+      // bare `?`, which is a no-op querystring server-side.
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/admins/notifications/broadcasts/preview?");
       expect(fetchMock.mock.calls[0][0]).not.toMatch(/type=/);
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       expect(JSON.parse(init.body as string)).toEqual(audience);
