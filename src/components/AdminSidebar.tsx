@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
+  LayoutGrid,
   Bell,
   Shield,
   Monitor,
@@ -94,7 +95,7 @@ const menuItems: SidebarMenuEntry[] = [
     kind: "link",
     title: "Overview",
     url: "/admin/overview",
-    icon: LayoutDashboard,
+    icon: LayoutGrid,
     description: "System-wide health, session and alert counters at a glance.",
   },
   {
