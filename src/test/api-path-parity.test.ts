@@ -44,7 +44,11 @@ function normalize(specPath: string): string {
  */
 const EXPECTED_MISSING: string[] = [];
 
-describe("admin-api path parity with the OpenAPI spec", () => {
+// NOTE: this suite checks path *existence* only. It does not check that the
+// HTTP verb (GET/POST/PATCH/DELETE) the client uses for a given path matches
+// a verb the spec actually documents for that path — a client call using the
+// wrong method against an otherwise-known path would not be caught here.
+describe("admin-api path parity with the OpenAPI spec (path existence only, not HTTP verb parity)", () => {
   const knownPaths = new Set(Object.keys(spec.paths).map(normalize));
 
   // Every literal `/v1/...` path passed to `apiRequest`, plus the four CRUD helpers

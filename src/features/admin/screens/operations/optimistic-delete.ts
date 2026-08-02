@@ -1,6 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { AdminResourceItem } from "@/lib/api/types";
 
+/**
+ * Shared paging window for the Operations list endpoints (and the sidebar's
+ * prefetch of them): a flat first page, no pagination UI yet built for these
+ * screens.
+ */
+export const OPERATIONS_LIST_PAGE = { skip: 0, limit: 100 } as const;
+
 /** A record's id, tolerating both the `id` and Mongo `_id` spellings the API returns. */
 export function itemId(item: AdminResourceItem): string {
   const candidate = item.id || item._id;

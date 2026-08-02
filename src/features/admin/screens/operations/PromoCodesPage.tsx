@@ -7,6 +7,7 @@ import {
   updatePromoCode,
 } from "@/lib/api/admin-api";
 import { OperationsCrudPage } from "@/features/admin/screens/operations/OperationsCrudPage";
+import { OPERATIONS_LIST_PAGE } from "@/features/admin/screens/operations/optimistic-delete";
 
 export default function PromoCodesPage() {
   return (
@@ -27,7 +28,7 @@ export default function PromoCodesPage() {
         { key: "valid_to_epoch", label: "Valid To (Epoch)", type: "number", placeholder: "1776651600" },
         { key: "is_active", label: "Active", type: "boolean" },
       ]}
-      listFn={() => listPromoCodes({ skip: 0, limit: 100 })}
+      listFn={() => listPromoCodes(OPERATIONS_LIST_PAGE)}
       createFn={createPromoCode}
       updateFn={updatePromoCode}
       deleteFn={deletePromoCode}

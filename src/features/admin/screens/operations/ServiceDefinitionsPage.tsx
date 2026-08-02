@@ -7,6 +7,7 @@ import {
   updateServiceDefinition,
 } from "@/lib/api/admin-api";
 import { OperationsCrudPage } from "@/features/admin/screens/operations/OperationsCrudPage";
+import { OPERATIONS_LIST_PAGE } from "@/features/admin/screens/operations/optimistic-delete";
 
 export default function ServiceDefinitionsPage() {
   return (
@@ -25,7 +26,7 @@ export default function ServiceDefinitionsPage() {
         { key: "is_active", label: "Active", type: "boolean" },
         { key: "notes", label: "Notes", type: "textarea", placeholder: "Internal operational notes." },
       ]}
-      listFn={() => listServiceDefinitions({ skip: 0, limit: 100 })}
+      listFn={() => listServiceDefinitions(OPERATIONS_LIST_PAGE)}
       createFn={createServiceDefinition}
       updateFn={updateServiceDefinition}
       deleteFn={deleteServiceDefinition}

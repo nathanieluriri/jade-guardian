@@ -7,6 +7,7 @@ import {
   updateAddOn,
 } from "@/lib/api/admin-api";
 import { OperationsCrudPage } from "@/features/admin/screens/operations/OperationsCrudPage";
+import { OPERATIONS_LIST_PAGE } from "@/features/admin/screens/operations/optimistic-delete";
 
 export default function AddOnsPage() {
   return (
@@ -26,7 +27,7 @@ export default function AddOnsPage() {
         { key: "is_active", label: "Active", type: "boolean" },
         { key: "notes", label: "Notes", type: "textarea" },
       ]}
-      listFn={() => listAddOns({ skip: 0, limit: 100 })}
+      listFn={() => listAddOns(OPERATIONS_LIST_PAGE)}
       createFn={createAddOn}
       updateFn={updateAddOn}
       deleteFn={deleteAddOn}

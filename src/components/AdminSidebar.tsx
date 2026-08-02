@@ -68,6 +68,7 @@ import {
   listServiceAreas,
   listPromoCodes,
 } from "@/lib/api/admin-api";
+import { OPERATIONS_LIST_PAGE } from "@/features/admin/screens/operations/optimistic-delete";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAdminAccess } from "@/hooks/use-admin-access";
 import { useAdminLogout } from "@/hooks/use-admin-auth";
