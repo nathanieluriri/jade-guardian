@@ -142,6 +142,7 @@ export function OperationsCrudPage({
   const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialValues(fields));
 
@@ -313,8 +314,16 @@ export function OperationsCrudPage({
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={submit} disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}>
-                  {isEditing ? "Save Changes" : "Create"}
+                <Button
+                  data-testid="crud-submit"
+                  onClick={submit}
+                  disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}
+                >
+                  {createMutation.isPending || updateMutation.isPending
+                    ? "Saving..."
+                    : isEditing
+                      ? "Save Changes"
+                      : "Create"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -356,10 +365,13 @@ export function OperationsCrudPage({
                     <Button size="sm" variant="outline" onClick={() => startEdit(row)} disabled={!canUpdate || !id}>
                       Edit
                     </Button>
-                    <AlertDialog>
+                    <AlertDialog
+                      open={confirmDeleteId === id}
+                      onOpenChange={(next) => setConfirmDeleteId(next ? id ?? null : null)}
+                    >
                       <AlertDialogTrigger asChild>
                         <Button size="sm" variant="destructive" disabled={!canDelete || !id || deleteMutation.isPending}>
-                          Delete
+                          {deleteMutation.isPending ? "Deleting..." : "Delete"}
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -371,8 +383,17 @@ export function OperationsCrudPage({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => id && deleteMutation.mutate(id)}>
-                            Confirm Delete
+                          <AlertDialogAction
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (!id) return;
+                              deleteMutation.mutate(id, {
+                                onSettled: () => setConfirmDeleteId(null),
+                              });
+                            }}
+                            disabled={deleteMutation.isPending}
+                          >
+                            {deleteMutation.isPending ? "Deleting..." : "Confirm Delete"}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
