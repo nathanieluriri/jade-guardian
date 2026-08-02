@@ -373,8 +373,8 @@ export function OperationsCrudPage({
                       onOpenChange={(next) => setConfirmDeleteId(next ? id ?? null : null)}
                     >
                       <AlertDialogTrigger asChild>
-                        <Button size="sm" variant="destructive" disabled={!canDelete || !id || deleteMutation.isPending}>
-                          {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                        <Button size="sm" variant="destructive" disabled={!canDelete || !id}>
+                          Delete
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -394,9 +394,8 @@ export function OperationsCrudPage({
                                 onSettled: () => setConfirmDeleteId(null),
                               });
                             }}
-                            disabled={deleteMutation.isPending}
                           >
-                            {deleteMutation.isPending ? "Deleting..." : "Confirm Delete"}
+                            Confirm Delete
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
