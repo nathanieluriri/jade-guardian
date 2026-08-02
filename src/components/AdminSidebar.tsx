@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   LayoutGrid,
@@ -59,11 +59,38 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { fetchAlerts, listElevationRequests } from "@/lib/api/admin-api";
+import {
+  fetchAlerts,
+  listElevationRequests,
+  listServiceDefinitions,
+  listAddOns,
+  listPricingRules,
+  listServiceAreas,
+  listPromoCodes,
+} from "@/lib/api/admin-api";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAdminAccess } from "@/hooks/use-admin-access";
 import { useAdminLogout } from "@/hooks/use-admin-auth";
 import { SECURITY_SETTINGS_ROUTE } from "@/lib/admin-access";
+
+export type NavPrefetch = { queryKey: unknown[]; queryFn: () => Promise<unknown> };
+
+/**
+ * Warms a nav item's data on hover so the click lands on a populated cache instead of a
+ * loading state. `staleTime` here mirrors the global 60s default: hovering a link whose
+ * data is still fresh must not trigger a network request.
+ */
+export async function prefetchNavItem(
+  client: QueryClient,
+  item: { prefetch?: NavPrefetch },
+): Promise<void> {
+  if (!item.prefetch) return;
+  await client.prefetchQuery({
+    queryKey: item.prefetch.queryKey,
+    queryFn: item.prefetch.queryFn,
+    staleTime: 60_000,
+  });
+}
 
 type SidebarLinkItem = {
   kind: "link";
@@ -78,6 +105,8 @@ type SidebarLinkItem = {
    * than invented here.
    */
   description: string;
+  /** Optional query to warm on hover/focus so the click lands on populated data. */
+  prefetch?: NavPrefetch;
 };
 
 type SidebarGroupItem = {
@@ -235,6 +264,10 @@ const menuItems: SidebarMenuEntry[] = [
         url: "/admin/operations/service-definitions",
         icon: FileText,
         description: "Base cleaning services used by the booking and pricing flows.",
+        prefetch: {
+          queryKey: ["operations", "service-definitions"],
+          queryFn: () => listServiceDefinitions({ skip: 0, limit: 100 }),
+        },
       },
       {
         kind: "link",
@@ -242,6 +275,10 @@ const menuItems: SidebarMenuEntry[] = [
         url: "/admin/operations/add-ons",
         icon: Package,
         description: "Optional add-ons attached to bookings.",
+        prefetch: {
+          queryKey: ["operations", "add-ons"],
+          queryFn: () => listAddOns({ skip: 0, limit: 100 }),
+        },
       },
       {
         kind: "link",
@@ -249,6 +286,10 @@ const menuItems: SidebarMenuEntry[] = [
         url: "/admin/operations/pricing-rules",
         icon: LineChart,
         description: "Conditional multipliers and rule priority for operational pricing.",
+        prefetch: {
+          queryKey: ["operations", "pricing-rules"],
+          queryFn: () => listPricingRules({ skip: 0, limit: 100 }),
+        },
       },
       {
         kind: "link",
@@ -256,6 +297,10 @@ const menuItems: SidebarMenuEntry[] = [
         url: "/admin/operations/service-areas",
         icon: MapPin,
         description: "Operational zone boundaries and covered zip codes.",
+        prefetch: {
+          queryKey: ["operations", "service-areas"],
+          queryFn: () => listServiceAreas({ skip: 0, limit: 100 }),
+        },
       },
       {
         kind: "link",
@@ -263,6 +308,10 @@ const menuItems: SidebarMenuEntry[] = [
         url: "/admin/operations/promo-codes",
         icon: Ticket,
         description: "Discount campaigns and redemption lifecycle controls.",
+        prefetch: {
+          queryKey: ["operations", "promo-codes"],
+          queryFn: () => listPromoCodes({ skip: 0, limit: 100 }),
+        },
       },
     ],
   },
@@ -381,6 +430,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const { allowedRoutes, canAccessRoute, profileQuery } = useAdminAccess();
   const logout = useAdminLogout();
+  const queryClient = useQueryClient();
   const { resolvedTheme, setTheme } = useTheme();
   const alertsQuery = useQuery({
     queryKey: ["open-alert-attention-count"],
@@ -614,6 +664,8 @@ export function AdminSidebar() {
                                       pendingNavigationHref === sub.url && "opacity-80 pointer-events-none"
                                     )}
                                     onClick={() => setPendingNavigationHref(sub.url)}
+                                    onMouseEnter={() => void prefetchNavItem(queryClient, sub)}
+                                    onFocus={() => void prefetchNavItem(queryClient, sub)}
                                   >
                                     <sub.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.5} />
                                     <span className="flex-1">{sub.title}</span>
