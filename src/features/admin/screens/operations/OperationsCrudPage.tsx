@@ -64,6 +64,17 @@ export type CrudField = {
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
   helpText?: string;
+  /**
+   * Legacy key to fall back to when the canonical `key` is absent (`undefined`)
+   * on the loaded item. Batch-2 canonicalised several admin-console field
+   * names (e.g. `is_active` -> `isAvailable`); records written before that
+   * migration ran still carry only the legacy key. Without this fallback,
+   * `mapItemToFormValues` reads `undefined` for the canonical key, a boolean
+   * field renders as its "off" default, and `mapFormToPayload` — which always
+   * emits a boolean — then writes that false back on save, silently
+   * deactivating a record an admin only meant to view or lightly edit.
+   */
+  legacyKey?: string;
 };
 
 const EMPTY_SELECT_VALUE = "__none__";
@@ -97,6 +108,13 @@ type OperationsCrudPageProps = {
    * Return a user-facing error string to block submit, or null when valid.
    */
   validateForm?: (values: Record<string, unknown>) => string | null;
+  /**
+   * Optional post-processing hook run after `mapItemToFormValues` when an
+   * existing record is opened for edit. Use this to derive UI-only form
+   * state (e.g. AddOnsPage's `addonScope` radio) from fields on the raw
+   * item that have no direct `CrudField` of their own.
+   */
+  deriveFormValues?: (item: AdminResourceItem, base: FormValues) => FormValues;
 };
 
 function initialValues(fields: CrudField[]) {
@@ -114,7 +132,7 @@ function initialValues(fields: CrudField[]) {
 
 export function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
   return fields.reduce<FormValues>((acc, field) => {
-    const value = item[field.key];
+    const value = item[field.key] !== undefined || !field.legacyKey ? item[field.key] : item[field.legacyKey];
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
       return acc;
@@ -217,6 +235,7 @@ export function OperationsCrudPage({
   updateFn,
   deleteFn,
   validateForm,
+  deriveFormValues,
 }: OperationsCrudPageProps) {
   const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
@@ -293,7 +312,8 @@ export function OperationsCrudPage({
 
   const startEdit = (item: AdminResourceItem) => {
     setEditingItemId(itemId(item));
-    setFormValues(mapItemToFormValues(item, fields));
+    const base = mapItemToFormValues(item, fields);
+    setFormValues(deriveFormValues ? deriveFormValues(item, base) : base);
     setOpen(true);
   };
 

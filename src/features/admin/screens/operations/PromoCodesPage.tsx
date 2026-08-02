@@ -38,7 +38,7 @@ export const PROMO_CODE_FIELDS: CrudField[] = [
   { key: "currency", label: "Currency", type: "text", placeholder: "USD" },
   { key: "startsAt", label: "Starts At", type: "date" },
   { key: "expiresAt", label: "Expires At", type: "date" },
-  { key: "active", label: "Active", type: "boolean" },
+  { key: "active", label: "Active", type: "boolean", legacyKey: "is_active" },
   { key: "maxRedemptions", label: "Max Redemptions", type: "number", placeholder: "500" },
 ];
 

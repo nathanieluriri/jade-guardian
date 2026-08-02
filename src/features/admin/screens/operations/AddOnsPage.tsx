@@ -23,10 +23,14 @@ import type { AdminResourcePayload } from "@/lib/api/types";
  * payload by `addonPayloadForBackend` before it reaches the API.
  */
 export const ADD_ON_FIELDS: CrudField[] = [
-  { key: "title", label: "Title", type: "text", required: true, placeholder: "Window Cleaning" },
+  { key: "title", label: "Title", type: "text", required: true, placeholder: "Window Cleaning", legacyKey: "display_name" },
+  // NOTE: deliberately no `legacyKey: "price_minor"` here — `price_minor` is
+  // in cents while `price` is in major units. Falling back across that 100x
+  // unit gap would render a silently wrong price instead of a blank field, so
+  // a legacy add-on's price must be fixed by hand, not auto-filled.
   { key: "price", label: "Price", type: "money", required: true, placeholder: "0.00" },
   { key: "currency", label: "Currency", type: "text", placeholder: "USD" },
-  { key: "isAvailable", label: "Available", type: "boolean" },
+  { key: "isAvailable", label: "Available", type: "boolean", legacyKey: "is_active" },
   {
     key: "addonScope",
     label: "Applies To",
@@ -46,7 +50,7 @@ export const ADD_ON_FIELDS: CrudField[] = [
     helpText:
       "Required when \"One service\" is selected. Leaving this empty makes the add-on global — it will apply to every service in the catalogue.",
   },
-  { key: "description", label: "Description", type: "textarea", placeholder: "What this add-on includes." },
+  { key: "description", label: "Description", type: "textarea", placeholder: "What this add-on includes.", legacyKey: "notes" },
   {
     key: "addon_key",
     label: "Add-on Key",
@@ -71,13 +75,24 @@ export function requireServiceIdWhenScopedToOne(values: Record<string, unknown>)
 /**
  * Removes the UI-only `addonScope` field and enforces that `serviceId` is
  * only sent when the admin deliberately scoped the add-on to one service.
+ *
+ * When un-scoping, this sends `serviceId: null` rather than omitting the key.
+ * On a PATCH, an omitted key is never touched server-side, so a previously
+ * scoped add-on would stay bound to its old service forever — explicit
+ * `null` is what actually clears it (see `AddOnCreate.serviceId` in the
+ * backend schema, widened to accept null for exactly this reason).
  */
 export function addonPayloadForBackend(payload: AdminResourcePayload): AdminResourcePayload {
   const { addonScope, ...rest } = payload;
   if (addonScope !== "one") {
-    delete rest.serviceId;
+    rest.serviceId = null;
   }
   return rest;
+}
+
+/** Derives the UI-only `addonScope` radio from whether the loaded record has a `serviceId`. */
+export function addonScopeFromItem(serviceId: unknown): "all" | "one" {
+  return typeof serviceId === "string" && serviceId.trim().length > 0 ? "one" : "all";
 }
 
 export default function AddOnsPage() {
@@ -92,6 +107,7 @@ export default function AddOnsPage() {
       deleteRequirement={{ method: "DELETE", path: "/v1/admins/add-ons/{id}" }}
       fields={ADD_ON_FIELDS}
       validateForm={requireServiceIdWhenScopedToOne}
+      deriveFormValues={(item, base) => ({ ...base, addonScope: addonScopeFromItem(item.serviceId) })}
       listFn={() => listAddOns(OPERATIONS_LIST_PAGE)}
       createFn={(payload) => createAddOn(addonPayloadForBackend(payload))}
       updateFn={(id, payload) => updateAddOn(id, addonPayloadForBackend(payload))}

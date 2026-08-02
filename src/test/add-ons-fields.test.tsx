@@ -86,14 +86,17 @@ describe("addonPayloadForBackend", () => {
     expect(payload).not.toHaveProperty("addonScope");
   });
 
-  it("produces a payload with no serviceId when scope is 'all services'", () => {
+  it("explicitly nulls serviceId when scope is 'all services', so a PATCH actually clears it (Finding 3)", () => {
+    // An omitted key is never touched by the backend on PATCH, so a
+    // previously-scoped add-on would stay bound to its old service forever.
+    // `null` is what actually clears it.
     const payload = addonPayloadForBackend({
       addonScope: "all",
       serviceId: "svc-1",
       title: "Window Cleaning",
       price: 25,
     });
-    expect(payload).not.toHaveProperty("serviceId");
+    expect(payload).toHaveProperty("serviceId", null);
   });
 
   it("keeps serviceId when scope is 'one service'", () => {

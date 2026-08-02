@@ -13,8 +13,8 @@ import { OPERATIONS_LIST_PAGE } from "@/features/admin/screens/operations/optimi
 // (app/server/schemas/admin-features.ts). Keys outside this schema are
 // silently stripped by the backend, so this list must stay a subset of it.
 export const SERVICE_DEFINITION_FIELDS: CrudField[] = [
-  { key: "title", label: "Title", type: "text", required: true, placeholder: "Home Cleaning" },
-  { key: "description", label: "Description", type: "textarea", placeholder: "What this service includes." },
+  { key: "title", label: "Title", type: "text", required: true, placeholder: "Home Cleaning", legacyKey: "display_name" },
+  { key: "description", label: "Description", type: "textarea", placeholder: "What this service includes.", legacyKey: "notes" },
   { key: "basePrice", label: "Base Price", type: "money", placeholder: "0.00" },
   { key: "hourlyRate", label: "Hourly Rate", type: "money", placeholder: "0.00" },
   { key: "minimumHours", label: "Minimum Hours", type: "number", placeholder: "1" },
@@ -30,7 +30,7 @@ export const SERVICE_DEFINITION_FIELDS: CrudField[] = [
     ],
   },
   { key: "currency", label: "Currency", type: "text", placeholder: "USD" },
-  { key: "isAvailable", label: "Available", type: "boolean" },
+  { key: "isAvailable", label: "Available", type: "boolean", legacyKey: "is_active" },
   {
     key: "checklist",
     label: "Checklist",
