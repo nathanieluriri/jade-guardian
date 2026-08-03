@@ -85,12 +85,17 @@ describe("admin-api path parity with the OpenAPI spec (path existence only, not 
   // seeing the route with/without a `type` query param, which inflated this to 89;
   // round-2 replaced that with a single call site using the same unconditional
   // `?${query.toString()}` convention as listAdmins/listCleaners/etc. elsewhere in
-  // this file, bringing the true count back to 88.) This floor is set just below
-  // that true count so a future regression that silently drops call sites (e.g. a
-  // new nesting depth the balanced-bracket pattern can't handle) fails the test
-  // instead of passing unnoticed.
+  // this file, bringing the true count back to 88. Task 7 of the same batch
+  // deleted the legacy `listBroadcasts`/`createBroadcast`/`updateBroadcast`/
+  // `deleteBroadcast` CRUD client functions (superseded by the notification
+  // broadcast API wired up in this task), which removes 2 distinct literal
+  // paths (`/v1/admins/broadcasts` and `/v1/admins/broadcasts/${id}`), bringing
+  // the true count to 86. This floor is set just below that true count so a
+  // future regression that silently drops call sites (e.g. a new nesting depth
+  // the balanced-bracket pattern can't handle) fails the test instead of
+  // passing unnoticed.
   it("finds the client's request paths", () => {
-    expect(clientPaths.length).toBeGreaterThan(87);
+    expect(clientPaths.length).toBeGreaterThan(85);
   });
 
   const checkedPaths = clientPaths.filter((clientPath) => !EXPECTED_MISSING.includes(clientPath));

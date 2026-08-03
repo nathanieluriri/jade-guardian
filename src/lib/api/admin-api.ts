@@ -959,26 +959,10 @@ export async function deletePayoutAdjustment(id: string) {
   return deleteAdminResource(`/v1/admins/payout-adjustments/${id}`);
 }
 
-export async function listBroadcasts(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/broadcasts", params);
-}
-
-export async function createBroadcast(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/broadcasts", payload);
-}
-
-export async function updateBroadcast(id: string, payload: AdminResourcePayload) {
-  return updateAdminResource(`/v1/admins/broadcasts/${id}`, payload);
-}
-
-export async function deleteBroadcast(id: string) {
-  return deleteAdminResource(`/v1/admins/broadcasts/${id}`);
-}
-
 /**
  * Client for the real notification broadcast API (`/v1/admins/notifications/broadcasts`),
  * which actually fans out pushes/notifications — unlike the legacy `/v1/admins/broadcasts`
- * CRUD collection above, which just writes a row.
+ * CRUD collection, which just wrote a row (retired; no longer exported from this file).
  *
  * `listNotificationBroadcasts` is cursor-paginated (`cursor`/`pageSize` in,
  * `{ items, nextCursor, pageSize }` out), unlike every other admin list in this file.

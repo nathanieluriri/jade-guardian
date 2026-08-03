@@ -54,6 +54,7 @@ export function BroadcastComposer() {
   const [audience, setAudience] = useState<BroadcastAudience>(EMPTY_AUDIENCE);
   const [notificationTypes, setNotificationTypes] = useState<string[]>([]);
   const [type, setType] = useState<string | undefined>(undefined);
+  const [typesLoadError, setTypesLoadError] = useState(false);
 
   const [preview, setPreview] = useState<AudiencePreviewOut | null>(null);
   const [previewedSnapshot, setPreviewedSnapshot] = useState<PreviewSnapshot | null>(null);
@@ -83,9 +84,19 @@ export function BroadcastComposer() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         // Type list is a convenience picker, not a hard requirement to
-        // compose — leave `type` undefined (backend defaults it) rather
-        // than blocking the whole composer on this fetch.
+        // compose. The route-level permission check only covers
+        // `GET /v1/admins/notifications/broadcasts` (list/send), not the
+        // types catalogue — an admin can legitimately land here without
+        // rights to `GET /v1/admins/notifications/types`. Degrade to the
+        // server's own default rather than leaving the picker empty or
+        // broken, and say so, so the admin knows why their choices are
+        // limited. The rest of the composer (audience builder, preview,
+        // send) must keep working regardless.
+        setNotificationTypes([DEFAULT_TYPE]);
+        setType(DEFAULT_TYPE);
+        setTypesLoadError(true);
       });
     return () => {
       cancelled = true;
@@ -182,6 +193,12 @@ export function BroadcastComposer() {
             ))}
           </SelectContent>
         </Select>
+        {typesLoadError && (
+          <p className="text-xs text-muted-foreground">
+            Couldn&apos;t load the notification type list, so only the default (
+            {DEFAULT_TYPE}) is available right now.
+          </p>
+        )}
       </div>
 
       <AudienceBuilder value={audience} onChange={handleAudienceChange} />

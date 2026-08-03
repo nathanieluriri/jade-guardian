@@ -46,6 +46,23 @@ describe("BroadcastComposer", () => {
     expect(await screen.findByText("promo.broadcast")).toBeInTheDocument();
   });
 
+  it("degrades gracefully when the notification type list fails to load", async () => {
+    vi.spyOn(adminApi, "fetchNotificationTypes").mockRejectedValue(new Error("boom"));
+    vi.spyOn(adminApi, "previewBroadcastAudience").mockResolvedValue(preview);
+    const user = userEvent.setup();
+    render(<BroadcastComposer />);
+
+    // Falls back to the server's default type as the sole option.
+    expect(await screen.findByText("promo.broadcast")).toBeInTheDocument();
+    // Surfaces an honest note explaining the fallback.
+    expect(screen.getByText(/couldn.t load the notification type list/i)).toBeInTheDocument();
+
+    // Rest of the composer keeps working: fill, preview, send gate behaves normally.
+    await fillMessage(user);
+    expect(screen.getByRole("button", { name: /^send/i })).toBeDisabled();
+    await doPreview(user);
+  });
+
   it("caps title at 120 chars and body at 500 chars", async () => {
     setup();
     render(<BroadcastComposer />);

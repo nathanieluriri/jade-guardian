@@ -28,8 +28,6 @@ import {
   createServiceCredit,
   listPayoutAdjustments,
   createPayoutAdjustment,
-  listBroadcasts,
-  createBroadcast,
   listCleanerTags,
   createCleanerTag,
   listAvailabilityOverrides,
@@ -376,7 +374,6 @@ describe("admin-api list query params", () => {
         list: listPayoutAdjustments,
         create: createPayoutAdjustment,
       },
-      { label: "broadcasts", path: "broadcasts", list: listBroadcasts, create: createBroadcast },
       { label: "cleaner tags", path: "cleaner-tags", list: listCleanerTags, create: createCleanerTag },
       {
         label: "availability overrides",
