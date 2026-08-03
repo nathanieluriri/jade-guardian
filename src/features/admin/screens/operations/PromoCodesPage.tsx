@@ -74,6 +74,7 @@ export default function PromoCodesPage() {
       createFn={createPromoCode}
       updateFn={updatePromoCode}
       deleteFn={deletePromoCode}
+      templateFeature="promo-codes"
     />
   );
 }

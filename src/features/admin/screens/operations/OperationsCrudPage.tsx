@@ -43,6 +43,8 @@ import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction, type PermissionRequirement } from "@/lib/admin-access";
 import type { AdminResourceItem, AdminResourcePayload } from "@/lib/api/types";
 import { itemId, optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
+import { TemplatePicker, SaveAsTemplateButton } from "@/features/admin/templates/TemplatePicker";
+import type { TemplateFeature } from "@/lib/api/template-types";
 
 export type CrudFieldType =
   | "text"
@@ -115,6 +117,13 @@ type OperationsCrudPageProps = {
    * item that have no direct `CrudField` of their own.
    */
   deriveFormValues?: (item: AdminResourceItem, base: FormValues) => FormValues;
+  /**
+   * Optional. When absent, no template picker or save-as-template control is
+   * rendered and no template fetch is issued — behaviour is byte-identical
+   * to a page with no template support at all. This must stay optional:
+   * `OperationsCrudPage` backs twelve pages and only five have templates.
+   */
+  templateFeature?: TemplateFeature;
 };
 
 function initialValues(fields: CrudField[]) {
@@ -250,6 +259,7 @@ export function OperationsCrudPage({
   deleteFn,
   validateForm,
   deriveFormValues,
+  templateFeature,
 }: OperationsCrudPageProps) {
   const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
@@ -331,6 +341,20 @@ export function OperationsCrudPage({
     setOpen(true);
   };
 
+  /**
+   * Applying a template must never write straight through to the API or
+   * mark the form valid on its own: it fills `formValues` the same way an
+   * admin typing values would, then the existing `validateRequired` /
+   * `validateForm` checks run on the next render exactly as normal.
+   * `mapItemToFormValues` only reads keys present in `fields`, so a stale
+   * key left over from a schema change is silently dropped rather than
+   * smuggled into the outgoing payload.
+   */
+  const applyTemplate = (payload: Record<string, unknown>) => {
+    const base = mapItemToFormValues(payload as AdminResourceItem, fields);
+    setFormValues(deriveFormValues ? deriveFormValues(payload as AdminResourceItem, base) : base);
+  };
+
   const submit = () => {
     const payload = mapFormToPayload(formValues, fields);
     if (isEditing && editingItemId) {
@@ -380,6 +404,17 @@ export function OperationsCrudPage({
                 <DialogTitle>{isEditing ? `Edit ${title}` : `Create ${title}`}</DialogTitle>
                 <DialogDescription>Fill in required fields and save changes.</DialogDescription>
               </DialogHeader>
+              {templateFeature && (
+                <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+                  <div className="flex-1">
+                    <TemplatePicker feature={templateFeature} onApply={applyTemplate} />
+                  </div>
+                  <SaveAsTemplateButton
+                    feature={templateFeature}
+                    payload={mapFormToPayload(formValues, fields)}
+                  />
+                </div>
+              )}
               <div className="grid gap-3">
                 {fields.map((field) => {
                   const value = formValues[field.key];

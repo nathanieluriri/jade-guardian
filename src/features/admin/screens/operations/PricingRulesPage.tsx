@@ -74,6 +74,7 @@ export default function PricingRulesPage() {
       createFn={createPricingRule}
       updateFn={updatePricingRule}
       deleteFn={deletePricingRule}
+      templateFeature="pricing-rules"
     />
   );
 }
