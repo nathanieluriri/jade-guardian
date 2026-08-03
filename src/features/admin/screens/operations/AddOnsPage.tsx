@@ -112,6 +112,7 @@ export default function AddOnsPage() {
       createFn={(payload) => createAddOn(addonPayloadForBackend(payload))}
       updateFn={(id, payload) => updateAddOn(id, addonPayloadForBackend(payload))}
       deleteFn={deleteAddOn}
+      templateFeature="add-ons"
     />
   );
 }

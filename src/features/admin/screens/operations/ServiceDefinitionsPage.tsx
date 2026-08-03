@@ -70,6 +70,7 @@ export default function ServiceDefinitionsPage() {
       createFn={createServiceDefinition}
       updateFn={updateServiceDefinition}
       deleteFn={deleteServiceDefinition}
+      templateFeature="service-definitions"
     />
   );
 }

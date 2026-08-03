@@ -38,6 +38,7 @@ export default function ServiceAreasPage() {
       createFn={createServiceArea}
       updateFn={updateServiceArea}
       deleteFn={deleteServiceArea}
+      templateFeature="service-areas"
     />
   );
 }

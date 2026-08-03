@@ -45,6 +45,9 @@ const ONBOARDING_STATUS_LABELS: Record<(typeof ONBOARDING_STATUSES)[number], str
  */
 export function validateAudience(audience: BroadcastAudience): string | null {
   const required = AUDIENCE_REQUIREMENTS[audience.type];
+  if (!required) {
+    return `Unrecognised audience type: ${String(audience.type)}`;
+  }
 
   if (required.includes("userIds")) {
     const count = audience.userIds?.length ?? 0;
@@ -95,7 +98,7 @@ interface AudienceBuilderProps {
  * selection would otherwise ride along silently in the payload.
  */
 export function AudienceBuilder({ value, onChange }: AudienceBuilderProps) {
-  const required = AUDIENCE_REQUIREMENTS[value.type];
+  const required = AUDIENCE_REQUIREMENTS[value.type] ?? [];
 
   function handleTypeChange(nextType: AudienceType) {
     // Only carry over `type` — every other field is dropped, and the fields
