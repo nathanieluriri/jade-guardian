@@ -17,6 +17,28 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 }
 
 /**
+ * jsdom ships no IntersectionObserver. `@lottiefiles/dotlottie-react` uses it to
+ * track visibility, so without this stub the Lottie component throws.
+ */
+class IntersectionObserverStub implements IntersectionObserver {
+  readonly root: Element | null = null;
+  readonly rootMargin: string = "";
+  readonly thresholds: ReadonlyArray<number> = [];
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  globalThis.IntersectionObserver =
+    IntersectionObserverStub as unknown as typeof globalThis.IntersectionObserver;
+}
+
+/**
  * jsdom implements no layout, so `Element.prototype.scrollIntoView` is missing
  * entirely. `cmdk` (the ⌘K palette) calls it in a layout effect to keep the
  * selected item visible, which throws the moment the dialog mounts.

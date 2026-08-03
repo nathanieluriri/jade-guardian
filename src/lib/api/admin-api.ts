@@ -46,6 +46,13 @@ import type {
   TotpSetupData,
   UsersSummaryReport,
 } from "@/lib/api/types";
+import type {
+  BroadcastAudience,
+  BroadcastCreateRequest,
+  BroadcastListOut,
+  BroadcastOut,
+  AudiencePreviewOut,
+} from "@/lib/api/broadcast-types";
 
 function normalizePermissionEntry(input: unknown): RoleTemplate["permissionList"]["permissions"][number] | null {
   if (!input || typeof input !== "object") return null;
@@ -410,9 +417,34 @@ export async function updateAlertAckState(alertId: string, ack: boolean) {
   });
 }
 
-export async function fetchSessionAnomalies() {
-  const response = await apiRequest<SessionAnomalies>("/v1/admins/monitoring/sessions/anomalies");
-  return response.data;
+/**
+ * The spec types this endpoint's `data` as a passthrough `AdminGenericObject`, so the
+ * `SessionAnomalies` interface is a claim the runtime does not honor. Normalizing here
+ * rather than in the component keeps every consumer safe: SessionsPage previously white-
+ * screened on `Object.entries(undefined)`.
+ */
+export async function fetchSessionAnomalies(): Promise<SessionAnomalies> {
+  const response = await apiRequest<Partial<SessionAnomalies> | null>(
+    "/v1/admins/monitoring/sessions/anomalies",
+  );
+  const data = (response.data ?? {}) as Partial<SessionAnomalies>;
+
+  const rawCounts = data.active_sessions_by_admin;
+  const active_sessions_by_admin: Record<string, number> = {};
+  if (rawCounts && typeof rawCounts === "object" && !Array.isArray(rawCounts)) {
+    for (const [adminId, count] of Object.entries(rawCounts)) {
+      if (typeof count === "number" && Number.isFinite(count)) {
+        active_sessions_by_admin[adminId] = count;
+      }
+    }
+  }
+
+  return {
+    active_sessions_by_admin,
+    global_active_sessions: typeof data.global_active_sessions === "number" ? data.global_active_sessions : 0,
+    long_lived_session_count: typeof data.long_lived_session_count === "number" ? data.long_lived_session_count : 0,
+    recent_session_spike_detected: data.recent_session_spike_detected === true,
+  };
 }
 
 export async function revokeCurrentSession() {
@@ -927,20 +959,74 @@ export async function deletePayoutAdjustment(id: string) {
   return deleteAdminResource(`/v1/admins/payout-adjustments/${id}`);
 }
 
-export async function listBroadcasts(params: { limit?: number; skip?: number } = {}) {
-  return listAdminResource("/v1/admins/broadcasts", params);
+/**
+ * Client for the real notification broadcast API (`/v1/admins/notifications/broadcasts`),
+ * which actually fans out pushes/notifications — unlike the legacy `/v1/admins/broadcasts`
+ * CRUD collection, which just wrote a row (retired; no longer exported from this file).
+ *
+ * `listNotificationBroadcasts` is cursor-paginated (`cursor`/`pageSize` in,
+ * `{ items, nextCursor, pageSize }` out), unlike every other admin list in this file.
+ * Do NOT route it through `listAdminResource` (which hardcodes `limit`/`skip`) and do NOT
+ * flatten its response to a bare array — callers need `nextCursor` to page.
+ */
+export async function fetchNotificationTypes() {
+  const response = await apiRequest<string[]>("/v1/admins/notifications/types");
+  return response.data;
 }
 
-export async function createBroadcast(payload: AdminResourcePayload) {
-  return createAdminResource("/v1/admins/broadcasts", payload);
+export async function previewBroadcastAudience(audience: BroadcastAudience, type?: string) {
+  const query = new URLSearchParams();
+  if (type !== undefined) query.set("type", type);
+  // `?${query.toString()}` unconditionally (empty string when `type` is absent) rather
+  // than a `path` variable — same convention as listAdmins/listCleaners/etc. above. This
+  // keeps a single call site with the query built inline as one literal, so the
+  // path-parity audit (which only matches a literal passed directly to `apiRequest`,
+  // not one assigned to a variable first) still sees this route.
+  const response = await apiRequest<AudiencePreviewOut>(
+    `/v1/admins/notifications/broadcasts/preview?${query.toString()}`,
+    {
+      method: "POST",
+      body: JSON.stringify(audience),
+    }
+  );
+  return response.data;
 }
 
-export async function updateBroadcast(id: string, payload: AdminResourcePayload) {
-  return updateAdminResource(`/v1/admins/broadcasts/${id}`, payload);
+export async function createBroadcast_v2(payload: BroadcastCreateRequest) {
+  const response = await apiRequest<BroadcastOut>("/v1/admins/notifications/broadcasts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
 }
 
-export async function deleteBroadcast(id: string) {
-  return deleteAdminResource(`/v1/admins/broadcasts/${id}`);
+export async function listNotificationBroadcasts(params: { cursor?: string; pageSize?: number } = {}) {
+  const query = new URLSearchParams();
+  if (params.cursor !== undefined) query.set("cursor", params.cursor);
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const qs = query.toString();
+  const path = qs ? `/v1/admins/notifications/broadcasts?${qs}` : `/v1/admins/notifications/broadcasts`;
+  const response = await apiRequest<BroadcastListOut>(path);
+  return response.data;
+}
+
+export async function fetchNotificationBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}`);
+  return response.data;
+}
+
+export async function resumeBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}/resume`, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+export async function cancelBroadcast(id: string) {
+  const response = await apiRequest<BroadcastOut>(`/v1/admins/notifications/broadcasts/${id}/cancel`, {
+    method: "POST",
+  });
+  return response.data;
 }
 
 export async function listCleanerTags(params: { limit?: number; skip?: number } = {}) {

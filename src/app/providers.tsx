@@ -99,24 +99,37 @@ function currentPathname(): string | null {
   return typeof window === "undefined" ? null : window.location.pathname;
 }
 
+/**
+ * Query defaults tuned for an admin console: pages are revisited constantly via the
+ * sidebar, and a 0ms staleTime meant every revisit refetched and flashed a loading
+ * state. 60s of freshness with a 5min cache makes back-navigation instant while
+ * keeping data current enough for operational screens.
+ */
+export function createAdminQueryClient(
+  onQueryError?: (error: unknown) => void,
+  onMutationError?: (error: unknown) => void
+): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 1,
+        refetchOnWindowFocus: false,
+        staleTime: 60_000,
+        gcTime: 5 * 60_000,
+      },
+    },
+    queryCache: new QueryCache({ onError: (error) => onQueryError?.(error) }),
+    mutationCache: new MutationCache({ onError: (error) => onMutationError?.(error) }),
+  });
+}
+
 export function Providers({ children, initialTheme }: { children: React.ReactNode; initialTheme: "light" | "dark" }) {
   const router = useRouter();
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: 1,
-            refetchOnWindowFocus: false,
-          },
-        },
-        queryCache: new QueryCache({
-          onError: (error) => handleAdminQueryError(error, router, currentPathname()),
-        }),
-        mutationCache: new MutationCache({
-          onError: (error) => handleAdminQueryError(error, router, currentPathname()),
-        }),
-      })
+  const [queryClient] = useState(() =>
+    createAdminQueryClient(
+      (error) => handleAdminQueryError(error, router, currentPathname()),
+      (error) => handleAdminQueryError(error, router, currentPathname())
+    )
   );
 
   return (

@@ -110,7 +110,7 @@ export const ADMIN_ROUTE_REQUIREMENTS: Record<string, PermissionRequirement[]> =
   "/admin/support/claim-reviews": [{ method: "GET", path: "/v1/admins/claim-reviews" }],
   "/admin/support/service-credits": [{ method: "GET", path: "/v1/admins/service-credits" }],
   "/admin/support/payout-adjustments": [{ method: "GET", path: "/v1/admins/payout-adjustments" }],
-  "/admin/governance/broadcasts": [{ method: "GET", path: "/v1/admins/broadcasts" }],
+  "/admin/governance/broadcasts": [{ method: "GET", path: "/v1/admins/notifications/broadcasts" }],
   "/admin/governance/cleaner-tags": [{ method: "GET", path: "/v1/admins/cleaner-tags" }],
   "/admin/governance/availability-overrides": [{ method: "GET", path: "/v1/admins/availability-overrides" }],
 };

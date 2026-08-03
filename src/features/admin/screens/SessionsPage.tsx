@@ -91,7 +91,14 @@ export default function SessionsPage() {
   }
 
   if (sessionsQuery.isError || !sessionsQuery.data) {
-    return <p className="font-mono-data text-destructive">Failed to load session anomaly metrics.</p>;
+    return (
+      <div className="space-y-3 max-w-[1000px]">
+        <p className="font-mono-data text-destructive">Failed to load session anomaly metrics.</p>
+        <Button variant="outline" size="sm" onClick={() => sessionsQuery.refetch()} disabled={sessionsQuery.isFetching}>
+          {sessionsQuery.isFetching ? "Retrying..." : "Retry"}
+        </Button>
+      </div>
+    );
   }
 
   const data = sessionsQuery.data;
@@ -122,18 +129,24 @@ export default function SessionsPage() {
           <span className="text-xs text-muted-foreground">Higher counts can indicate session sharing or token abuse.</span>
         </div>
         <motion.div variants={stagger} initial="hidden" animate="visible" className="divide-y divide-border">
-          {sortedEntries.map(([adminId, count]) => (
-            <motion.div key={adminId} variants={fadeUp} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors duration-150">
-              <div className="space-y-1">
-                <span className="font-mono-data text-foreground">{adminId}</span>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CircleAlert className="h-3.5 w-3.5" />
-                  Risk score inferred from active session volume only.
+          {sortedEntries.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+              No active admin sessions to report.
+            </p>
+          ) : (
+            sortedEntries.map(([adminId, count]) => (
+              <motion.div key={adminId} variants={fadeUp} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors duration-150">
+                <div className="space-y-1">
+                  <span className="font-mono-data text-foreground">{adminId}</span>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CircleAlert className="h-3.5 w-3.5" />
+                    Risk score inferred from active session volume only.
+                  </div>
                 </div>
-              </div>
-              <Badge variant={count > 3 ? "high" : "info"}>{count} sessions</Badge>
-            </motion.div>
-          ))}
+                <Badge variant={count > 3 ? "high" : "info"}>{count} sessions</Badge>
+              </motion.div>
+            ))
+          )}
         </motion.div>
       </motion.div>
 

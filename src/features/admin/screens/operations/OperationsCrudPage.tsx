@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { TableSkeleton } from "@/components/feedback/table-skeleton";
 import {
   Dialog,
   DialogContent,
@@ -30,11 +31,30 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction, type PermissionRequirement } from "@/lib/admin-access";
 import type { AdminResourceItem, AdminResourcePayload } from "@/lib/api/types";
+import { itemId, optimisticDeleteHandlers } from "@/features/admin/screens/operations/optimistic-delete";
 
-export type CrudFieldType = "text" | "number" | "textarea" | "boolean" | "array_csv";
+export type CrudFieldType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "boolean"
+  | "array_csv"
+  | "select"
+  | "radio"
+  | "multiselect"
+  | "date"
+  | "money";
 
 export type CrudField = {
   key: string;
@@ -42,7 +62,33 @@ export type CrudField = {
   type: CrudFieldType;
   required?: boolean;
   placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  helpText?: string;
+  /**
+   * Legacy key to fall back to when the canonical `key` is absent (`undefined`)
+   * on the loaded item. Batch-2 canonicalised several admin-console field
+   * names (e.g. `is_active` -> `isAvailable`); records written before that
+   * migration ran still carry only the legacy key. Without this fallback,
+   * `mapItemToFormValues` reads `undefined` for the canonical key, a boolean
+   * field renders as its "off" default, and `mapFormToPayload` — which always
+   * emits a boolean — then writes that false back on save, silently
+   * deactivating a record an admin only meant to view or lightly edit.
+   */
+  legacyKey?: string;
 };
+
+const EMPTY_SELECT_VALUE = "__none__";
+
+type FormValue = string | boolean | string[];
+type FormValues = Record<string, FormValue>;
+
+function dateStringToEpochSeconds(dateStr: string): number {
+  return Math.floor(new Date(`${dateStr}T00:00:00Z`).getTime() / 1000);
+}
+
+function epochSecondsToDateString(epochSeconds: number): string {
+  return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
+}
 
 type OperationsCrudPageProps = {
   title: string;
@@ -57,29 +103,68 @@ type OperationsCrudPageProps = {
   createFn: (payload: AdminResourcePayload) => Promise<unknown>;
   updateFn: (id: string, payload: AdminResourcePayload) => Promise<unknown>;
   deleteFn: (id: string) => Promise<unknown>;
+  /**
+   * Optional cross-field validation beyond per-field `required` checks.
+   * Return a user-facing error string to block submit, or null when valid.
+   */
+  validateForm?: (values: Record<string, unknown>) => string | null;
+  /**
+   * Optional post-processing hook run after `mapItemToFormValues` when an
+   * existing record is opened for edit. Use this to derive UI-only form
+   * state (e.g. AddOnsPage's `addonScope` radio) from fields on the raw
+   * item that have no direct `CrudField` of their own.
+   */
+  deriveFormValues?: (item: AdminResourceItem, base: FormValues) => FormValues;
 };
 
-function itemId(item: AdminResourceItem) {
-  const candidate = item.id || item._id;
-  return typeof candidate === "string" ? candidate : "";
-}
-
 function initialValues(fields: CrudField[]) {
-  return fields.reduce<Record<string, string | boolean>>((acc, field) => {
-    acc[field.key] = field.type === "boolean" ? false : "";
+  return fields.reduce<FormValues>((acc, field) => {
+    if (field.type === "boolean") {
+      acc[field.key] = false;
+    } else if (field.type === "multiselect") {
+      acc[field.key] = [];
+    } else {
+      acc[field.key] = "";
+    }
     return acc;
   }, {});
 }
 
-function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
-  return fields.reduce<Record<string, string | boolean>>((acc, field) => {
-    const value = item[field.key];
+/**
+ * Resolves a field's raw value off an item, falling back to `field.legacyKey`
+ * ONLY when the canonical key is strictly `undefined`. A legacy record whose
+ * canonical field is explicitly `false` (e.g. `isAvailable: false`) must keep
+ * that value rather than falling back to a stale legacy value.
+ */
+export function resolveFieldValue(item: AdminResourceItem, field: CrudField) {
+  const canonical = item[field.key];
+  if (canonical !== undefined || !field.legacyKey) {
+    return canonical;
+  }
+  return item[field.legacyKey];
+}
+
+export function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
+  return fields.reduce<FormValues>((acc, field) => {
+    const value = resolveFieldValue(item, field);
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
       return acc;
     }
     if (field.type === "array_csv") {
       acc[field.key] = Array.isArray(value) ? value.join(", ") : "";
+      return acc;
+    }
+    if (field.type === "multiselect") {
+      acc[field.key] = Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+      return acc;
+    }
+    if (field.type === "date") {
+      acc[field.key] = typeof value === "number" ? epochSecondsToDateString(value) : "";
+      return acc;
+    }
+    if (field.type === "money") {
+      acc[field.key] = typeof value === "number" ? String(value) : "";
       return acc;
     }
     if (typeof value === "number") {
@@ -91,17 +176,37 @@ function mapItemToFormValues(item: AdminResourceItem, fields: CrudField[]) {
   }, {});
 }
 
-function mapFormToPayload(values: Record<string, string | boolean>, fields: CrudField[]) {
+export function mapFormToPayload(values: FormValues, fields: CrudField[]) {
   return fields.reduce<AdminResourcePayload>((acc, field) => {
     const value = values[field.key];
     if (field.type === "boolean") {
       acc[field.key] = Boolean(value);
       return acc;
     }
+    if (field.type === "multiselect") {
+      const arr = Array.isArray(value) ? value : [];
+      if (arr.length === 0 && !field.required) return acc;
+      acc[field.key] = arr;
+      return acc;
+    }
     const str = String(value || "").trim();
     if (!str && !field.required) return acc;
     if (field.type === "number") {
       acc[field.key] = str === "" ? null : Number(str);
+      return acc;
+    }
+    if (field.type === "money") {
+      if (str === "") {
+        acc[field.key] = null;
+        return acc;
+      }
+      const parsed = Number(str);
+      if (!Number.isFinite(parsed)) return acc;
+      acc[field.key] = Math.round(parsed * 100) / 100;
+      return acc;
+    }
+    if (field.type === "date") {
+      acc[field.key] = str === "" ? null : dateStringToEpochSeconds(str);
       return acc;
     }
     if (field.type === "array_csv") {
@@ -116,11 +221,16 @@ function mapFormToPayload(values: Record<string, string | boolean>, fields: Crud
   }, {});
 }
 
-function validateRequired(values: Record<string, string | boolean>, fields: CrudField[]) {
+export function validateRequired(values: FormValues, fields: CrudField[]) {
   return fields.every((field) => {
     if (!field.required) return true;
     const value = values[field.key];
     if (field.type === "boolean") return value === true || value === false;
+    if (field.type === "multiselect") return Array.isArray(value) && value.length > 0;
+    if (field.type === "money") {
+      const str = String(value || "").trim();
+      return str.length > 0 && Number.isFinite(Number(str));
+    }
     return String(value || "").trim().length > 0;
   });
 }
@@ -138,12 +248,15 @@ export function OperationsCrudPage({
   createFn,
   updateFn,
   deleteFn,
+  validateForm,
+  deriveFormValues,
 }: OperationsCrudPageProps) {
   const profileQuery = useAdminProfile();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialValues(fields));
+  const [formValues, setFormValues] = useState<FormValues>(() => initialValues(fields));
 
   const canRead = canAccessAdminAction(readRequirement, profileQuery.data);
   const canCreate = canAccessAdminAction(createRequirement, profileQuery.data);
@@ -182,17 +295,28 @@ export function OperationsCrudPage({
     onError: () => toast.error("Update failed."),
   });
 
+  const deleteCache = optimisticDeleteHandlers(queryClient, queryKey);
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteFn(id),
-    onSuccess: async () => {
+    onMutate: deleteCache.onMutate,
+    onSettled: deleteCache.onSettled,
+    onSuccess: () => {
       toast.success("Deleted successfully.");
-      await queryClient.invalidateQueries({ queryKey: ["operations", queryKey] });
     },
-    onError: () => toast.error("Delete failed."),
+    onError: (error, id, context) => {
+      deleteCache.onError(error, id, context);
+      toast.error("Delete failed.");
+    },
   });
 
   const isEditing = !!editingItemId;
-  const canSubmit = validateRequired(formValues, fields) && !createMutation.isPending && !updateMutation.isPending;
+  const formError = validateForm ? validateForm(formValues) : null;
+  const canSubmit =
+    validateRequired(formValues, fields) &&
+    !formError &&
+    !createMutation.isPending &&
+    !updateMutation.isPending;
 
   const startCreate = () => {
     setEditingItemId(null);
@@ -202,7 +326,8 @@ export function OperationsCrudPage({
 
   const startEdit = (item: AdminResourceItem) => {
     setEditingItemId(itemId(item));
-    setFormValues(mapItemToFormValues(item, fields));
+    const base = mapItemToFormValues(item, fields);
+    setFormValues(deriveFormValues ? deriveFormValues(item, base) : base);
     setOpen(true);
   };
 
@@ -292,6 +417,163 @@ export function OperationsCrudPage({
                     );
                   }
 
+                  if (field.type === "select") {
+                    const selectValue = typeof value === "string" && value ? value : EMPTY_SELECT_VALUE;
+                    const knownOptions = field.options || [];
+                    // A `select` may be a UI-only *guided picker* over a free-text
+                    // backend field (see rule_type in PricingRulesPage): the stored
+                    // value can legitimately be outside `field.options`. Inject it as
+                    // an extra option so it stays visible and is never silently
+                    // dropped/rewritten by editing and saving an unrelated field.
+                    const hasCurrentOption = knownOptions.some((option) => option.value === selectValue);
+                    const options =
+                      selectValue !== EMPTY_SELECT_VALUE && !hasCurrentOption
+                        ? [...knownOptions, { value: selectValue, label: selectValue }]
+                        : knownOptions;
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Select
+                          value={selectValue}
+                          onValueChange={(next) =>
+                            setFormValues((prev) => ({
+                              ...prev,
+                              [field.key]: next === EMPTY_SELECT_VALUE ? "" : next,
+                            }))
+                          }
+                        >
+                          <SelectTrigger id={field.key}>
+                            <SelectValue placeholder={field.placeholder} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={EMPTY_SELECT_VALUE}>None</SelectItem>
+                            {options.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {field.helpText && (
+                          <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "radio") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <RadioGroup
+                          value={typeof value === "string" ? value : ""}
+                          onValueChange={(next) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: next }))
+                          }
+                          className="flex flex-wrap gap-4"
+                        >
+                          {(field.options || []).map((option) => (
+                            <div key={option.value} className="flex items-center gap-2">
+                              <RadioGroupItem id={`${field.key}-${option.value}`} value={option.value} />
+                              <Label htmlFor={`${field.key}-${option.value}`} className="font-normal">
+                                {option.label}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "multiselect") {
+                    const selected = Array.isArray(value) ? value : [];
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <div className="flex flex-wrap gap-3 rounded-md border p-3">
+                          {(field.options || []).map((option) => {
+                            const checked = selected.includes(option.value);
+                            return (
+                              <label
+                                key={option.value}
+                                className="flex items-center gap-2 text-sm font-normal"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) =>
+                                    setFormValues((prev) => {
+                                      const prevSelected = Array.isArray(prev[field.key])
+                                        ? (prev[field.key] as string[])
+                                        : [];
+                                      const nextSelected = event.target.checked
+                                        ? [...prevSelected, option.value]
+                                        : prevSelected.filter((entry) => entry !== option.value);
+                                      return { ...prev, [field.key]: nextSelected };
+                                    })
+                                  }
+                                />
+                                {option.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "date") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Input
+                          id={field.key}
+                          type="date"
+                          value={String(value || "")}
+                          onChange={(event) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                          }
+                        />
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "money") {
+                    return (
+                      <div key={field.key} className="space-y-1.5">
+                        <Label htmlFor={field.key}>
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </Label>
+                        <Input
+                          id={field.key}
+                          type="number"
+                          step="0.01"
+                          placeholder={field.placeholder}
+                          value={String(value || "")}
+                          onChange={(event) =>
+                            setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
+                          }
+                        />
+                        {field.helpText && (
+                          <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={field.key} className="space-y-1.5">
                       <Label htmlFor={field.key}>
@@ -307,15 +589,33 @@ export function OperationsCrudPage({
                           setFormValues((prev) => ({ ...prev, [field.key]: event.target.value }))
                         }
                       />
+                      {field.helpText && (
+                        <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                      )}
                     </div>
                   );
                 })}
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={submit} disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}>
-                  {isEditing ? "Save Changes" : "Create"}
-                </Button>
+              <DialogFooter className="sm:flex-col sm:items-stretch sm:gap-2">
+                {formError && (
+                  <p className="text-sm text-destructive" data-testid="crud-form-error">
+                    {formError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button
+                    data-testid="crud-submit"
+                    onClick={submit}
+                    disabled={!canSubmit || (isEditing ? !canUpdate : !canCreate)}
+                  >
+                    {createMutation.isPending || updateMutation.isPending
+                      ? "Saving..."
+                      : isEditing
+                        ? "Save Changes"
+                        : "Create"}
+                  </Button>
+                </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -328,7 +628,7 @@ export function OperationsCrudPage({
           <Badge variant="secondary">{rows.length}</Badge>
         </div>
         <div className="divide-y divide-border">
-          {listQuery.isLoading && <p className="p-4 text-sm text-muted-foreground">Loading records...</p>}
+          {listQuery.isLoading && <TableSkeleton rows={5} columns={3} />}
           {listQuery.isError && <p className="p-4 text-sm text-destructive">Failed to load records.</p>}
           {!listQuery.isLoading && !listQuery.isError && rows.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">No records found.</p>
@@ -341,7 +641,7 @@ export function OperationsCrudPage({
                 <div key={id || JSON.stringify(row)} className="p-4 flex flex-col gap-3">
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {previewColumns.map((column) => {
-                      const value = row[column.key];
+                      const value = resolveFieldValue(row, column);
                       return (
                         <div key={`${id}-${column.key}`} className="min-w-0">
                           <p className="text-xs text-muted-foreground">{column.label}</p>
@@ -356,9 +656,12 @@ export function OperationsCrudPage({
                     <Button size="sm" variant="outline" onClick={() => startEdit(row)} disabled={!canUpdate || !id}>
                       Edit
                     </Button>
-                    <AlertDialog>
+                    <AlertDialog
+                      open={confirmDeleteId === id}
+                      onOpenChange={(next) => setConfirmDeleteId(next ? id ?? null : null)}
+                    >
                       <AlertDialogTrigger asChild>
-                        <Button size="sm" variant="destructive" disabled={!canDelete || !id || deleteMutation.isPending}>
+                        <Button size="sm" variant="destructive" disabled={!canDelete || !id}>
                           Delete
                         </Button>
                       </AlertDialogTrigger>
@@ -371,7 +674,15 @@ export function OperationsCrudPage({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => id && deleteMutation.mutate(id)}>
+                          <AlertDialogAction
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (!id) return;
+                              deleteMutation.mutate(id, {
+                                onSettled: () => setConfirmDeleteId(null),
+                              });
+                            }}
+                          >
                             Confirm Delete
                           </AlertDialogAction>
                         </AlertDialogFooter>

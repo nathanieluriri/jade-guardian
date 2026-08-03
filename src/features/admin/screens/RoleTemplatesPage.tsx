@@ -39,7 +39,6 @@ import {
   updateRoleTemplate,
 } from "@/lib/api/admin-api";
 import type { Permission, RoleTemplatePreviewResult, RoleTemplateRolloutImpact } from "@/lib/api/types";
-import { AdminLoadingState } from "@/components/AdminLoadingState";
 import { useAdminProfile } from "@/hooks/use-admin-auth";
 import { canAccessAdminAction } from "@/lib/admin-access";
 
@@ -251,6 +250,10 @@ function TemplateSection({
   canSave,
   canPreview,
   canRollout,
+  isLoading,
+  isError,
+  onRetry,
+  "data-testid": dataTestId,
 }: {
   role: "cleaner" | "customer";
   source: string;
@@ -269,6 +272,10 @@ function TemplateSection({
   canSave: boolean;
   canPreview: boolean;
   canRollout: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  "data-testid"?: string;
 }) {
   const [rolloutPhrase, setRolloutPhrase] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -285,8 +292,29 @@ function TemplateSection({
 
   const { added, removed } = diffPermissions(permissions, initialPermissions);
 
+  if (isLoading) {
+    return (
+      <div data-testid={`role-template-loading-${role}`} className="surface-card p-4 text-sm text-muted-foreground">
+        Loading {role} template...
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div data-testid={`role-template-error-${role}`} className="surface-card space-y-3 p-4">
+        <p className="font-mono-data text-destructive">
+          Failed to load the {role} template.
+        </p>
+        <Button variant="outline" size="sm" onClick={onRetry} data-testid={`role-template-retry-${role}`}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="surface-card">
+    <div className="surface-card" data-testid={dataTestId}>
       <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-[15px] font-semibold capitalize">{role} Template</h3>
@@ -541,9 +569,6 @@ export default function RoleTemplatesPage() {
     onError: () => toast.error("Rollout failed."),
   });
 
-  const loading = cleanerQuery.isLoading || customerQuery.isLoading;
-  const hasError = cleanerQuery.isError || customerQuery.isError;
-
   const cleanerSource = useMemo(() => cleanerQuery.data?.source || "template", [cleanerQuery.data]);
   const customerSource = useMemo(() => customerQuery.data?.source || "default", [customerQuery.data]);
   const canSaveCleaner = canAccessAdminAction({ method: "PUT", path: "/v1/admins/permission-templates/cleaner" }, profileQuery.data);
@@ -559,51 +584,52 @@ export default function RoleTemplatesPage() {
         Role Permission Templates
       </h1>
 
-      {loading && <AdminLoadingState label="Loading role templates..." />}
-      {hasError && <p className="font-mono-data text-destructive">Failed to load role templates.</p>}
-
-      {!loading && !hasError && (
-        <>
-          <TemplateSection
-            role="cleaner"
-            source={cleanerSource}
-            permissions={cleanerPerms}
-            initialPermissions={initialCleanerPerms}
-            onUpdate={handleCleanerUpdate}
-            onSave={() => saveMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
-            onPreview={() => previewMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
-            onRollout={() => rolloutMutation.mutate("cleaner")}
-            warnings={cleanerWarnings}
-            saving={saveMutation.isPending}
-            previewing={previewMutation.isPending}
-            rollingOut={rolloutMutation.isPending}
-            preview={cleanerPreview}
-            impact={cleanerImpactQuery.data || null}
-            canSave={canSaveCleaner}
-            canPreview={canPreviewCleaner}
-            canRollout={canRolloutCleaner}
-          />
-          <TemplateSection
-            role="customer"
-            source={customerSource}
-            permissions={customerPerms}
-            initialPermissions={initialCustomerPerms}
-            onUpdate={handleCustomerUpdate}
-            onSave={() => saveMutation.mutate({ role: "customer", permissions: customerPerms })}
-            onPreview={() => previewMutation.mutate({ role: "customer", permissions: customerPerms })}
-            onRollout={() => rolloutMutation.mutate("customer")}
-            warnings={customerWarnings}
-            saving={saveMutation.isPending}
-            previewing={previewMutation.isPending}
-            rollingOut={rolloutMutation.isPending}
-            preview={customerPreview}
-            impact={customerImpactQuery.data || null}
-            canSave={canSaveCustomer}
-            canPreview={canPreviewCustomer}
-            canRollout={canRolloutCustomer}
-          />
-        </>
-      )}
+      <TemplateSection
+        role="cleaner"
+        data-testid="role-template-section-cleaner"
+        isLoading={cleanerQuery.isLoading}
+        isError={cleanerQuery.isError}
+        onRetry={() => cleanerQuery.refetch()}
+        source={cleanerSource}
+        permissions={cleanerPerms}
+        initialPermissions={initialCleanerPerms}
+        onUpdate={handleCleanerUpdate}
+        onSave={() => saveMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
+        onPreview={() => previewMutation.mutate({ role: "cleaner", permissions: cleanerPerms })}
+        onRollout={() => rolloutMutation.mutate("cleaner")}
+        warnings={cleanerWarnings}
+        saving={saveMutation.isPending}
+        previewing={previewMutation.isPending}
+        rollingOut={rolloutMutation.isPending}
+        preview={cleanerPreview}
+        impact={cleanerImpactQuery.data || null}
+        canSave={canSaveCleaner}
+        canPreview={canPreviewCleaner}
+        canRollout={canRolloutCleaner}
+      />
+      <TemplateSection
+        role="customer"
+        data-testid="role-template-section-customer"
+        isLoading={customerQuery.isLoading}
+        isError={customerQuery.isError}
+        onRetry={() => customerQuery.refetch()}
+        source={customerSource}
+        permissions={customerPerms}
+        initialPermissions={initialCustomerPerms}
+        onUpdate={handleCustomerUpdate}
+        onSave={() => saveMutation.mutate({ role: "customer", permissions: customerPerms })}
+        onPreview={() => previewMutation.mutate({ role: "customer", permissions: customerPerms })}
+        onRollout={() => rolloutMutation.mutate("customer")}
+        warnings={customerWarnings}
+        saving={saveMutation.isPending}
+        previewing={previewMutation.isPending}
+        rollingOut={rolloutMutation.isPending}
+        preview={customerPreview}
+        impact={customerImpactQuery.data || null}
+        canSave={canSaveCustomer}
+        canPreview={canPreviewCustomer}
+        canRollout={canRolloutCustomer}
+      />
     </div>
   );
 }
