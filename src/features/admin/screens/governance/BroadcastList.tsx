@@ -54,7 +54,12 @@ export function BroadcastList() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const actionInFlightRef = useRef(false);
+  // Holds the id of the row currently mid-request, not just a boolean, so
+  // an in-flight resume/cancel on one row does not block an action on a
+  // different row — the `disabled` prop is per-row (`isBusy`), so the ref
+  // guarding it must be too, or a resume on row B while row A is in flight
+  // would silently no-op against a button that looks enabled.
+  const actionInFlightRef = useRef<string | null>(null);
   const loadMoreInFlightRef = useRef(false);
 
   const { confirm, confirmDialog } = useConfirm();
@@ -102,8 +107,8 @@ export function BroadcastList() {
   }
 
   async function handleResume(id: string) {
-    if (actionInFlightRef.current) return;
-    actionInFlightRef.current = true;
+    if (actionInFlightRef.current !== null) return;
+    actionInFlightRef.current = id;
     setBusyId(id);
     try {
       const updated = await resumeBroadcast(id);
@@ -111,31 +116,37 @@ export function BroadcastList() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resume broadcast");
     } finally {
-      actionInFlightRef.current = false;
+      actionInFlightRef.current = null;
       setBusyId(null);
     }
   }
 
   async function handleCancel(id: string, title: string) {
-    if (actionInFlightRef.current) return;
-    const confirmed = await confirm({
-      title: "Cancel this broadcast?",
-      description: `"${title}" is still sending. Recipients already processed will have received it; the rest will not. This cannot be undone.`,
-      confirmLabel: "Cancel broadcast",
-      cancelLabel: "Keep sending",
-      tone: "destructive",
-    });
-    if (!confirmed) return;
-
-    actionInFlightRef.current = true;
-    setBusyId(id);
+    // Set the guard synchronously *before* awaiting the confirmation
+    // dialog, not after — checking before but setting after leaves a
+    // window where two clicks can both pass the check while the dialog is
+    // still open. In practice `useConfirm` only ever shows one dialog at a
+    // time, so this is a defense-in-depth ordering fix to match the other
+    // three in-flight guard sites in this file/composer, not a live bug.
+    if (actionInFlightRef.current !== null) return;
+    actionInFlightRef.current = id;
     try {
+      const confirmed = await confirm({
+        title: "Cancel this broadcast?",
+        description: `"${title}" is still sending. Recipients already processed will have received it; the rest will not. This cannot be undone.`,
+        confirmLabel: "Cancel broadcast",
+        cancelLabel: "Keep sending",
+        tone: "destructive",
+      });
+      if (!confirmed) return;
+
+      setBusyId(id);
       const updated = await cancelBroadcast(id);
       replaceItem(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel broadcast");
     } finally {
-      actionInFlightRef.current = false;
+      actionInFlightRef.current = null;
       setBusyId(null);
     }
   }

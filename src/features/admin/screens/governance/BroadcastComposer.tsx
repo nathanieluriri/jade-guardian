@@ -140,7 +140,19 @@ export function BroadcastComposer() {
     setSendError(null);
     try {
       const result = await createBroadcast_v2({ title, body, audience, type });
-      setSendResult(`Broadcast queued (status: ${result.status.toLowerCase()}).`);
+      // A successful send must consume the preview it was authorised
+      // against: `preview`/`previewedSnapshot` still describe an audience
+      // that has now already been sent to, so leaving the gate open would
+      // let a second click (the admin re-checking the still-populated form)
+      // re-send to every user on the platform. Latching `dirtySincePreview`
+      // is the same mechanism an audience/type edit uses, so `canSend` closes
+      // the gate through its normal path rather than a special case.
+      setDirtySincePreview(true);
+      setPreview(null);
+      setPreviewedSnapshot(null);
+      setSendResult(
+        `Broadcast sent (status: ${result.status.toLowerCase()}). Preview the audience again before sending another broadcast.`,
+      );
     } catch (err) {
       // Deliberately do not touch title/body/audience here — a failed send
       // must not cost the admin their drafted message.

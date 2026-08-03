@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { previewBroadcastAudience } from "@/lib/api/admin-api";
@@ -71,6 +71,13 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
   const [previewedSnapshot, setPreviewedSnapshot] = useState<PreviewSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // `disabled={... || loading}` only reflects the last committed render, the
+  // same window the other three in-flight guards in this batch close with a
+  // ref. Here a double-click firing two identical `POST /preview` requests
+  // is not a correctness bug (last-resolve-wins on an identical snapshot),
+  // but it is a wasted request, and leaving this the one unguarded call site
+  // would read as an oversight rather than a considered decision.
+  const previewInFlightRef = useRef(false);
 
   const validationError = validateAudience(audience);
   const isStale =
@@ -78,6 +85,8 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
     (previewedSnapshot === null || !snapshotsEqual(previewedSnapshot, { audience, type }));
 
   async function handlePreview() {
+    if (previewInFlightRef.current) return;
+    previewInFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -89,6 +98,7 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to preview audience");
     } finally {
+      previewInFlightRef.current = false;
       setLoading(false);
     }
   }
