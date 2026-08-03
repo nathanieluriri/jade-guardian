@@ -1,6 +1,9 @@
 /**
- * Domain types for the admin broadcast API — mirrors
- * `app/server/schemas/broadcast.ts` in the backend repo exactly.
+ * Domain types for the admin broadcast API — these mirror the broadcast
+ * schema (`app/server/schemas/broadcast.ts`) defined in the separate
+ * `Marcus-cleaning-backend` repository. That repo is not available from
+ * here, so parity is a manual check: when the backend schema changes,
+ * these types need to be updated by hand to match.
  *
  * A broadcast is one notification sent to a segment of users. Fan-out is
  * batched and resumable server-side; these types describe the request/response

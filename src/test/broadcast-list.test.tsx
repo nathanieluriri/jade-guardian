@@ -52,10 +52,9 @@ describe("BroadcastList", () => {
 
     expect(await screen.findByText("Weekend sale")).toBeInTheDocument();
     expect(screen.getByText(/sending/i)).toBeInTheDocument();
-    expect(screen.getByText(/400/)).toBeInTheDocument();
-    expect(screen.getByText(/1000|1,000/)).toBeInTheDocument();
-    expect(screen.getByText(/390/)).toBeInTheDocument();
-    expect(screen.getByText(/10/)).toBeInTheDocument();
+    expect(screen.getByText(/^400 of (1000|1,000)$/)).toBeInTheDocument();
+    expect(screen.getByText("390")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
   });
 
   it("offers resume for QUEUED and SENDING but not for SENT", async () => {
@@ -153,6 +152,53 @@ describe("BroadcastList", () => {
     await user.click(screen.getByRole("button", { name: /resume/i }));
 
     await waitFor(() => expect(resumeSpy).toHaveBeenCalledWith("b1"));
+  });
+
+  it("an in-flight action on one row does not block or no-op a different row's action", async () => {
+    vi.spyOn(adminApi, "listNotificationBroadcasts").mockResolvedValue({
+      items: [
+        makeBroadcast({ id: "b1", status: "QUEUED", title: "Row A" }),
+        makeBroadcast({ id: "b2", status: "QUEUED", title: "Row B" }),
+      ],
+      nextCursor: null,
+      pageSize: 20,
+    });
+
+    let resolveRowA: ((value: BroadcastOut) => void) | undefined;
+    const resumeSpy = vi
+      .spyOn(adminApi, "resumeBroadcast")
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRowA = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(makeBroadcast({ id: "b2", status: "SENDING", title: "Row B" }));
+
+    const user = userEvent.setup();
+    render(<BroadcastList />);
+
+    await screen.findByText("Row A");
+    const resumeButtons = screen.getAllByRole("button", { name: /resume/i });
+
+    // Start row A's action and leave it in flight.
+    await user.click(resumeButtons[0]);
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+
+    // Row A's own button now shows busy and is disabled...
+    expect(screen.getByRole("button", { name: /resuming/i })).toBeDisabled();
+
+    // ...but row B's button must still be enabled and must actually fire a
+    // request when clicked, not silently no-op.
+    const rowBButton = screen.getAllByRole("button", { name: /^resume$/i })[0];
+    expect(rowBButton).toBeEnabled();
+    await user.click(rowBButton);
+
+    await waitFor(() => expect(resumeSpy).toHaveBeenCalledTimes(2));
+    expect(resumeSpy).toHaveBeenNthCalledWith(2, "b2");
+
+    // Clean up the still-pending row A call.
+    resolveRowA?.(makeBroadcast({ id: "b1", status: "SENDING", title: "Row A" }));
   });
 
   it("shows a Load more affordance only when nextCursor is present, and pages through it", async () => {

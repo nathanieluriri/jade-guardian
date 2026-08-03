@@ -53,13 +53,26 @@ export function BroadcastList() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  // Holds the id of the row currently mid-request, not just a boolean, so
-  // an in-flight resume/cancel on one row does not block an action on a
-  // different row — the `disabled` prop is per-row (`isBusy`), so the ref
-  // guarding it must be too, or a resume on row B while row A is in flight
-  // would silently no-op against a button that looks enabled.
-  const actionInFlightRef = useRef<string | null>(null);
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+
+  function setRowBusy(id: string, busy: boolean) {
+    setBusyIds((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  // Holds the *set* of ids currently mid-request, not a single id, so an
+  // in-flight resume/cancel on one row does not block an action on a
+  // different row — the `disabled` prop is per-row (`isBusy`), so the guard
+  // must be too. A single `string | null` ref would be clobbered the moment
+  // two different rows had actions in flight at once (the second row's id
+  // would overwrite the first's, leaving the first row's `finally` clearing
+  // the second row's guard). Membership in this set is what `disabled`
+  // mirrors, so a button never looks enabled while its own row's action is
+  // still running, and never blocks a different row's action either.
+  const actionsInFlightRef = useRef<Set<string>>(new Set());
   const loadMoreInFlightRef = useRef(false);
 
   const { confirm, confirmDialog } = useConfirm();
@@ -90,6 +103,7 @@ export function BroadcastList() {
     if (!nextCursor || loadMoreInFlightRef.current) return;
     loadMoreInFlightRef.current = true;
     setLoadingMore(true);
+    setError(null);
     try {
       const page = await listNotificationBroadcasts({ cursor: nextCursor });
       setItems((prev) => [...prev, ...page.items]);
@@ -107,17 +121,18 @@ export function BroadcastList() {
   }
 
   async function handleResume(id: string) {
-    if (actionInFlightRef.current !== null) return;
-    actionInFlightRef.current = id;
-    setBusyId(id);
+    if (actionsInFlightRef.current.has(id)) return;
+    actionsInFlightRef.current.add(id);
+    setRowBusy(id, true);
+    setError(null);
     try {
       const updated = await resumeBroadcast(id);
       replaceItem(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resume broadcast");
     } finally {
-      actionInFlightRef.current = null;
-      setBusyId(null);
+      actionsInFlightRef.current.delete(id);
+      setRowBusy(id, false);
     }
   }
 
@@ -128,8 +143,9 @@ export function BroadcastList() {
     // still open. In practice `useConfirm` only ever shows one dialog at a
     // time, so this is a defense-in-depth ordering fix to match the other
     // three in-flight guard sites in this file/composer, not a live bug.
-    if (actionInFlightRef.current !== null) return;
-    actionInFlightRef.current = id;
+    if (actionsInFlightRef.current.has(id)) return;
+    actionsInFlightRef.current.add(id);
+    setError(null);
     try {
       const confirmed = await confirm({
         title: "Cancel this broadcast?",
@@ -140,14 +156,14 @@ export function BroadcastList() {
       });
       if (!confirmed) return;
 
-      setBusyId(id);
+      setRowBusy(id, true);
       const updated = await cancelBroadcast(id);
       replaceItem(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel broadcast");
     } finally {
-      actionInFlightRef.current = null;
-      setBusyId(null);
+      actionsInFlightRef.current.delete(id);
+      setRowBusy(id, false);
     }
   }
 
@@ -181,7 +197,7 @@ export function BroadcastList() {
               items.map((item) => {
                 const canResume = RESUMABLE_STATUSES.has(item.status);
                 const canCancel = CANCELLABLE_STATUSES.has(item.status);
-                const isBusy = busyId === item.id;
+                const isBusy = busyIds.has(item.id);
 
                 return (
                   <tr key={item.id}>

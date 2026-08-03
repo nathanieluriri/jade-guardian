@@ -134,6 +134,12 @@ export function BroadcastPreview({ audience, type, onPreviewed }: BroadcastPrevi
             <span className="font-medium">Reachable by push:</span>{" "}
             {preview.reachableByPush.toLocaleString()}
           </p>
+          {preview.matchedBeforeOptOut !== preview.total && (
+            <p className="text-muted-foreground">
+              <span className="font-medium">Matched before opt-out filtering:</span>{" "}
+              {preview.matchedBeforeOptOut.toLocaleString()}
+            </p>
+          )}
           {preview.suppressedByOptOut > 0 && (
             <p role="status" className="font-medium text-destructive">
               {preview.suppressedByOptOut.toLocaleString()} people were excluded for having marketing

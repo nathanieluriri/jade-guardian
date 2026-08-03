@@ -120,7 +120,7 @@ async function signIn(page: Page): Promise<void> {
   await expect(otpField).toBeVisible();
   await otpField.fill(OTP_CODE);
 
-  await expect(page).toHaveURL(/\/admin\//);
+  await expect(page).not.toHaveURL(/\/admin\/login/);
 }
 
 async function goToComposer(page: Page): Promise<void> {
@@ -139,7 +139,10 @@ const previewButton = (page: Page) => page.getByRole("button", { name: /preview 
 test("send is disabled before previewing, and no send request ever escapes", async ({ page }) => {
   const sendRequests: Request[] = [];
   page.on("request", (request) => {
-    if (request.url().includes("/notifications/broadcasts") && request.method() === "POST") {
+    if (
+      new URL(request.url()).pathname.endsWith("/notifications/broadcasts") &&
+      request.method() === "POST"
+    ) {
       sendRequests.push(request);
     }
   });
