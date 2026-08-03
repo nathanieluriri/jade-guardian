@@ -55,6 +55,7 @@ export function BroadcastList() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const actionInFlightRef = useRef(false);
+  const loadMoreInFlightRef = useRef(false);
 
   const { confirm, confirmDialog } = useConfirm();
 
@@ -77,7 +78,12 @@ export function BroadcastList() {
   }, [loadFirstPage]);
 
   async function handleLoadMore() {
-    if (!nextCursor) return;
+    // `loadingMore`/`disabled` only reflect the last committed render, which
+    // leaves the same double-click window `sendInFlightRef` guards against
+    // in BroadcastComposer — a fast second click here would fire the same
+    // cursor twice, duplicating a page (and its React keys) in the list.
+    if (!nextCursor || loadMoreInFlightRef.current) return;
+    loadMoreInFlightRef.current = true;
     setLoadingMore(true);
     try {
       const page = await listNotificationBroadcasts({ cursor: nextCursor });
@@ -86,6 +92,7 @@ export function BroadcastList() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load more broadcasts");
     } finally {
+      loadMoreInFlightRef.current = false;
       setLoadingMore(false);
     }
   }

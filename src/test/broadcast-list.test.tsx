@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BroadcastList } from "@/features/admin/screens/governance/BroadcastList";
 import type { BroadcastOut } from "@/lib/api/broadcast-types";
@@ -180,5 +180,51 @@ describe("BroadcastList", () => {
     await screen.findByText("Second page");
     expect(listSpy).toHaveBeenLastCalledWith({ cursor: "cursor-2" });
     expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it("fires only one additional listNotificationBroadcasts call on a rapid double-click of Load more", async () => {
+    let resolveSecondCall: (() => void) | undefined;
+    const listSpy = vi
+      .spyOn(adminApi, "listNotificationBroadcasts")
+      .mockResolvedValueOnce({
+        items: [makeBroadcast({ id: "b1", title: "First page" })],
+        nextCursor: "cursor-2",
+        pageSize: 20,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecondCall = () =>
+              resolve({
+                items: [makeBroadcast({ id: "b2", title: "Second page" })],
+                nextCursor: null,
+                pageSize: 20,
+              });
+          }),
+      );
+
+    render(<BroadcastList />);
+
+    await screen.findByText("First page");
+    const loadMore = screen.getByRole("button", { name: /load more/i });
+
+    // Fire two clicks without awaiting between them — simulates the async
+    // setState window a rapid double-click lands in.
+    fireEvent.click(loadMore);
+    fireEvent.click(loadMore);
+
+    // Let the guard's synchronous check run for both queued clicks before
+    // resolving the in-flight fetch. One call already happened on mount
+    // (the first page); the guard should let exactly one more through for
+    // the two rapid Load more clicks, not two.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listSpy).toHaveBeenCalledTimes(2);
+
+    resolveSecondCall?.();
+    await screen.findByText("Second page");
+
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText("First page")).toHaveLength(1);
+    expect(screen.getAllByText("Second page")).toHaveLength(1);
   });
 });
