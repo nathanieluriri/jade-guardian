@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
+import type { FeatureTemplate, FeatureTemplateCreatePayload } from "@/lib/api/template-types";
 import type {
   AdminAutocompleteUser,
   AdminCreateCustomerPlaceRequest,
@@ -1059,4 +1060,59 @@ export async function updateAvailabilityOverride(id: string, payload: AdminResou
 
 export async function deleteAvailabilityOverride(id: string) {
   return deleteAdminResource(`/v1/admins/availability-overrides/${id}`);
+}
+
+/**
+ * Lists every feature template, paging past the backend's 200-item-per-call
+ * cap until the envelope's `total` is fully accounted for.
+ *
+ * `crudRouter`'s GET has no `feature` filter — only `limit`/`skip` — and
+ * `_generic-repo.ts` clamps `limit` to 200 server-side
+ * (`Math.min(Math.max(opts.limit ?? 50, 1), 200)`). The picker this feeds
+ * filters by `feature` client-side across six screens, so a bare/single-page
+ * call would silently truncate the list a template could be saved into and
+ * then never see again. This fetches `limit=200` pages and keeps requesting
+ * with an advancing `skip` until `items` collected reaches `total`. If `total`
+ * is missing or not a finite number, this throws rather than returning a
+ * partial list quietly.
+ */
+export async function listFeatureTemplates(): Promise<FeatureTemplate[]> {
+  const items: FeatureTemplate[] = [];
+  let skip = 0;
+
+  for (;;) {
+    const query = new URLSearchParams();
+    query.set("limit", "200");
+    query.set("skip", String(skip));
+    const response = await apiRequest<{ items?: FeatureTemplate[]; total?: number }>(
+      `/v1/admins/feature-templates?${query.toString()}`
+    );
+    const data = response.data;
+    const total = data?.total;
+    if (typeof total !== "number" || !Number.isFinite(total)) {
+      throw new Error(
+        "listFeatureTemplates: response envelope is missing a numeric `total` — refusing to return a possibly partial list"
+      );
+    }
+
+    const page = Array.isArray(data?.items) ? data.items : [];
+    items.push(...page);
+    skip += page.length;
+
+    if (items.length >= total || page.length === 0) break;
+  }
+
+  return items;
+}
+
+export async function createFeatureTemplate(payload: FeatureTemplateCreatePayload) {
+  const response = await apiRequest<FeatureTemplate>("/v1/admins/feature-templates", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function deleteFeatureTemplate(id: string) {
+  return apiRequest(`/v1/admins/feature-templates/${id}`, { method: "DELETE" });
 }

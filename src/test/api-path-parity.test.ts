@@ -42,7 +42,18 @@ function normalize(specPath: string): string {
  * ever wired up with a typo'd path. Currently empty: the audit below found
  * every literal path the client calls already present in the spec.
  */
-const EXPECTED_MISSING: string[] = [];
+const EXPECTED_MISSING: string[] = [
+  // Batch 3b Task 3 added the shared feature-templates client (listFeatureTemplates,
+  // createFeatureTemplate, deleteFeatureTemplate) against the confirmed backend route
+  // `/v1/admins/feature-templates` (app/server/routes/admin-features/index.ts). The
+  // vendored `fixtures/openapi.json` snapshot predates that backend route entirely, so
+  // these 3 distinct literal paths are genuinely absent from the fixture, not a client
+  // typo. Recorded here (not silently dropped) so a real regression — e.g. a future
+  // typo'd path — still fails this suite instead of being masked by this list.
+  "/v1/admins/feature-templates?${query.toString()}",
+  "/v1/admins/feature-templates",
+  "/v1/admins/feature-templates/${id}",
+];
 
 // NOTE: this suite checks path *existence* only. It does not check that the
 // HTTP verb (GET/POST/PATCH/DELETE) the client uses for a given path matches
@@ -90,12 +101,18 @@ describe("admin-api path parity with the OpenAPI spec (path existence only, not 
   // `deleteBroadcast` CRUD client functions (superseded by the notification
   // broadcast API wired up in this task), which removes 2 distinct literal
   // paths (`/v1/admins/broadcasts` and `/v1/admins/broadcasts/${id}`), bringing
-  // the true count to 86. This floor is set just below that true count so a
-  // future regression that silently drops call sites (e.g. a new nesting depth
-  // the balanced-bracket pattern can't handle) fails the test instead of
-  // passing unnoticed.
+  // the true count to 86. Batch 3b Task 3 added the feature-templates client
+  // (`listFeatureTemplates`, `createFeatureTemplate`, `deleteFeatureTemplate`),
+  // contributing 3 new distinct literal paths (the list call's querystring
+  // variant, the bare collection path used by create, and the `${id}` path
+  // used by delete), bringing the true count to 89 — all 3 recorded in
+  // `EXPECTED_MISSING` since the vendored spec fixture predates the backend
+  // route entirely. This floor is set just below that true count so a future
+  // regression that silently drops call sites (e.g. a new nesting depth the
+  // balanced-bracket pattern can't handle) fails the test instead of passing
+  // unnoticed.
   it("finds the client's request paths", () => {
-    expect(clientPaths.length).toBeGreaterThan(85);
+    expect(clientPaths.length).toBeGreaterThan(88);
   });
 
   const checkedPaths = clientPaths.filter((clientPath) => !EXPECTED_MISSING.includes(clientPath));
