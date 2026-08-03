@@ -21,6 +21,7 @@ import {
   canSend,
   type PreviewSnapshot,
 } from "@/features/admin/screens/governance/BroadcastPreview";
+import { TemplatePicker, SaveAsTemplateButton } from "@/features/admin/templates/TemplatePicker";
 
 const TITLE_MAX = 120;
 const BODY_MAX = 500;
@@ -119,6 +120,28 @@ export function BroadcastComposer() {
     setDirtySincePreview(false);
   }
 
+  // A template can carry an audience (and a type), and a stale preview taken
+  // against a *different* audience must never be allowed to authorise a send
+  // against this one. So this routes the audience/type through the exact
+  // same handlers a manual edit would use — `handleAudienceChange` and
+  // `handleTypeChange` — rather than calling `setAudience`/`setType`
+  // directly, so `dirtySincePreview` is latched the normal way. Title/body
+  // are filled directly since they're not part of `canSend`'s gate.
+  function applyTemplate(payload: Record<string, unknown>) {
+    if (typeof payload.title === "string") {
+      setTitle(payload.title);
+    }
+    if (typeof payload.body === "string") {
+      setBody(payload.body);
+    }
+    if (typeof payload.type === "string") {
+      handleTypeChange(payload.type);
+    }
+    if (payload.audience && typeof payload.audience === "object") {
+      handleAudienceChange(payload.audience as BroadcastAudience);
+    }
+  }
+
   const titleValid = title.trim().length > 0 && title.length <= TITLE_MAX;
   const bodyValid = body.trim().length > 0 && body.length <= BODY_MAX;
 
@@ -165,6 +188,16 @@ export function BroadcastComposer() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+        <div className="flex-1">
+          <TemplatePicker feature="broadcasts" onApply={applyTemplate} />
+        </div>
+        <SaveAsTemplateButton
+          feature="broadcasts"
+          payload={{ title, body, type, audience }}
+        />
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="broadcast-title">Title</Label>
         <Input
