@@ -14,7 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchNotificationTypes, createBroadcast_v2 } from "@/lib/api/admin-api";
-import type { AudiencePreviewOut, BroadcastAudience } from "@/lib/api/broadcast-types";
+import {
+  AUDIENCE_TYPES,
+  type AudiencePreviewOut,
+  type BroadcastAudience,
+} from "@/lib/api/broadcast-types";
 import { AudienceBuilder } from "@/features/admin/screens/governance/AudienceBuilder";
 import {
   BroadcastPreview,
@@ -28,6 +32,20 @@ const BODY_MAX = 500;
 const DEFAULT_TYPE = "promo.broadcast";
 
 const EMPTY_AUDIENCE: BroadcastAudience = { type: "ALL" };
+
+/**
+ * Guards a template's `audience` field before it's applied. A template
+ * payload is stored as `z.record(z.string(), z.unknown())` server-side, so
+ * it can legitimately carry an array, null, or an object with a `type` that
+ * isn't one of `AUDIENCE_TYPES` (e.g. from a stale/renamed audience type).
+ * Only a shape recognisable as a `BroadcastAudience` is applied — anything
+ * else is left alone rather than risk crashing `AudienceBuilder`/`validateAudience`.
+ */
+function isValidAudienceShape(value: unknown): value is BroadcastAudience {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const type = (value as { type?: unknown }).type;
+  return typeof type === "string" && (AUDIENCE_TYPES as readonly string[]).includes(type);
+}
 
 /**
  * Assembles the broadcast composer: title/body fields, the notification
@@ -60,6 +78,8 @@ export function BroadcastComposer() {
   const [preview, setPreview] = useState<AudiencePreviewOut | null>(null);
   const [previewedSnapshot, setPreviewedSnapshot] = useState<PreviewSnapshot | null>(null);
   const [dirtySincePreview, setDirtySincePreview] = useState(true);
+
+  const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -137,8 +157,8 @@ export function BroadcastComposer() {
     if (typeof payload.type === "string") {
       handleTypeChange(payload.type);
     }
-    if (payload.audience && typeof payload.audience === "object") {
-      handleAudienceChange(payload.audience as BroadcastAudience);
+    if (isValidAudienceShape(payload.audience)) {
+      handleAudienceChange(payload.audience);
     }
   }
 
@@ -190,11 +210,12 @@ export function BroadcastComposer() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 rounded-md border p-3">
         <div className="flex-1">
-          <TemplatePicker feature="broadcasts" onApply={applyTemplate} />
+          <TemplatePicker feature="broadcasts" onApply={applyTemplate} refreshKey={templateRefreshKey} />
         </div>
         <SaveAsTemplateButton
           feature="broadcasts"
           payload={{ title, body, type, audience }}
+          onSaved={() => setTemplateRefreshKey((key) => key + 1)}
         />
       </div>
 

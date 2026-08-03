@@ -236,7 +236,7 @@ export function validateRequired(values: FormValues, fields: CrudField[]) {
     const value = values[field.key];
     if (field.type === "boolean") return value === true || value === false;
     if (field.type === "multiselect") return Array.isArray(value) && value.length > 0;
-    if (field.type === "money") {
+    if (field.type === "money" || field.type === "number") {
       const str = String(value || "").trim();
       return str.length > 0 && Number.isFinite(Number(str));
     }
@@ -267,6 +267,7 @@ export function OperationsCrudPage({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<FormValues>(() => initialValues(fields));
+  const [templateRefreshKey, setTemplateRefreshKey] = useState(0);
 
   const canRead = canAccessAdminAction(readRequirement, profileQuery.data);
   const canCreate = canAccessAdminAction(createRequirement, profileQuery.data);
@@ -407,11 +408,16 @@ export function OperationsCrudPage({
               {templateFeature && (
                 <div className="flex items-start justify-between gap-3 rounded-md border p-3">
                   <div className="flex-1">
-                    <TemplatePicker feature={templateFeature} onApply={applyTemplate} />
+                    <TemplatePicker
+                      feature={templateFeature}
+                      onApply={applyTemplate}
+                      refreshKey={templateRefreshKey}
+                    />
                   </div>
                   <SaveAsTemplateButton
                     feature={templateFeature}
                     payload={mapFormToPayload(formValues, fields)}
+                    onSaved={() => setTemplateRefreshKey((key) => key + 1)}
                   />
                 </div>
               )}

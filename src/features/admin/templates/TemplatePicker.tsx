@@ -31,9 +31,19 @@ const NAME_MAX = 120;
 export function TemplatePicker({
   feature,
   onApply,
+  refreshKey,
 }: {
   feature: TemplateFeature;
   onApply: (payload: Record<string, unknown>) => void;
+  /**
+   * Bump this (e.g. a counter incremented by `SaveAsTemplateButton`'s
+   * `onSaved`) to force a refetch without remounting the component. Needed
+   * because this component is a permanent, never-unmounting sibling in some
+   * call sites (e.g. `BroadcastComposer`) — without this, a newly saved
+   * template is invisible until a full page navigation, even though the
+   * save itself succeeded. See ledger: "saved but invisible".
+   */
+  refreshKey?: number;
 }) {
   const [templates, setTemplates] = useState<FeatureTemplate[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,7 +73,7 @@ export function TemplatePicker({
     return () => {
       cancelled = true;
     };
-  }, [feature]);
+  }, [feature, refreshKey]);
 
   if (loading) {
     return (
@@ -120,9 +130,12 @@ export function TemplatePicker({
 export function SaveAsTemplateButton({
   feature,
   payload,
+  onSaved,
 }: {
   feature: TemplateFeature;
   payload: Record<string, unknown>;
+  /** Called after a successful save, so the parent can bump a `TemplatePicker` `refreshKey`. */
+  onSaved?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -156,6 +169,7 @@ export function SaveAsTemplateButton({
       toast.success("Template saved.");
       setOpen(false);
       reset();
+      onSaved?.();
     } catch {
       toast.error("Failed to save template.");
     } finally {
