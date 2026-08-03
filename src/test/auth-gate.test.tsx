@@ -337,7 +337,11 @@ describe("AdminAuthGate", () => {
         {
           body: profileBody({
             accessPreset: "content_support",
-            permissionList: ["GET:/api/v1/faq", "GET:/api/v1/admins/broadcasts", "POST:/api/v1/admins/broadcasts"],
+            permissionList: [
+              "GET:/api/v1/faq",
+              "GET:/api/v1/admins/notifications/broadcasts",
+              "POST:/api/v1/admins/notifications/broadcasts",
+            ],
           }),
         },
       ],
